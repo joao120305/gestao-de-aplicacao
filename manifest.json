@@ -1,0 +1,9 @@
+{
+  "name": "Drone Agro – aplicações e financeiro",
+  "short_name": "Drone Agro",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f3f4f1",
+  "theme_color": "#1f3b57",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
