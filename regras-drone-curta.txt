@@ -1,0 +1,88 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function logado() { return request.auth != null; }
+    function admin()  { return logado() && request.auth.token.email == 'admin@droneagro.app'; }
+    function memPath() { return /databases/$(db)/documents/membros/$(request.auth.uid); }
+    function membro(e) { return logado() && exists(memPath()) && get(memPath()).data.fid == e; }
+    function papel(e, p) { return membro(e) && get(memPath()).data.papel == p; }
+    function dono(e) { return papel(e, 'dono'); }
+    function piloto(e) { return papel(e, 'piloto'); }
+    function lic(e)   { return get(/databases/$(db)/documents/empresas/$(e)).data.licenca; }
+    function ativa(e) { return request.time.toMillis() < lic(e).validade; }
+    function mod(e, m) { return ativa(e) && lic(e).modulos[m] == true; }
+    function novo() { return request.resource.data; }
+    match /empresas/{e} {
+      allow read: if admin() || membro(e);
+      allow write: if admin();
+      allow create: if logado() && !exists(memPath())
+        && request.resource.data.dono == request.auth.uid
+        && request.resource.data.novo == true
+        && (request.resource.data.licenca.validade == 0 || request.resource.data.licenca.validade == 1798772399000)
+        && request.resource.data.valorMensal == 0
+        && request.resource.data.keys().hasOnly(['nome','cod','licenca','novo','valorMensal','contato','email','dono','donoNome','donoLogin','criadaEm']);
+      match /usuarios/{uid} {
+        allow read: if membro(e);
+        allow create: if logado() && request.auth.uid == uid && !exists(memPath())
+          && getAfter(memPath()).data.fid == e && getAfter(memPath()).data.papel == 'dono';
+        allow write: if admin() || (dono(e) && ativa(e));
+      }
+      match /clientes/{id} {
+        allow read: if membro(e);
+        allow create: if (dono(e) || piloto(e)) && ativa(e);
+        allow update, delete: if dono(e) && ativa(e);
+      }
+      match /drones/{id}   { allow read: if membro(e); allow write: if dono(e) && ativa(e); }
+      match /catalogo/{id} { allow read: if membro(e); allow write: if dono(e) && mod(e, 'estoque'); }
+      match /aplicacoes/{id} {
+        allow read: if dono(e) || (piloto(e) && resource.data.quem == request.auth.uid);
+        allow create: if (dono(e) && ativa(e)) || (
+          piloto(e) && ativa(e)
+          && novo().quem == request.auth.uid && novo().piloto == request.auth.uid
+          && novo().faturada == false && novo().ha is number && novo().ha > 0
+          && novo().keys().hasOnly(['data','cliente','clienteNome','local','cult','ha','vazao','voos','drone','droneNome','piloto','pilotoNome','obs','produtos','quem','faturada','criadoEm','lat','lng','km'])
+        );
+        allow update, delete: if dono(e) && ativa(e);
+      }
+      match /movimentos/{id} {
+        allow read: if membro(e);
+        allow create: if (dono(e) && mod(e, 'estoque')) || (
+          piloto(e) && mod(e, 'estoque') && novo().tipo == 'B'
+          && novo().quem == request.auth.uid && novo().qtd is number && novo().qtd > 0
+        );
+        allow update, delete: if dono(e) && ativa(e);
+      }
+      match /precos/{id}        { allow read: if dono(e); allow write: if dono(e) && mod(e, 'estoque'); }
+      match /precoVenda/{id}    { allow read: if dono(e); allow write: if dono(e) && ativa(e); }
+      match /clientesPreco/{id} { allow read: if dono(e); allow write: if dono(e) && ativa(e); }
+      match /receber/{id}       { allow read: if dono(e); allow write: if dono(e) && mod(e, 'financeiro'); }
+      match /financeiro/{id}    { allow read: if dono(e); allow write: if dono(e) && ativa(e); }
+      match /aplValores/{id}    { allow read: if dono(e); allow write: if dono(e) && ativa(e); }
+      match /notas/{id}         { allow read: if dono(e); allow write: if dono(e) && mod(e, 'ia'); }
+      match /config/{id}        { allow read: if dono(e); allow write: if dono(e) && ativa(e); }
+    }
+    match /membros/{uid} {
+      allow read: if admin() || (logado() && request.auth.uid == uid)
+                  || (resource != null && dono(resource.data.fid));
+      allow create: if logado() && request.auth.uid == uid
+        && request.resource.data.papel == 'dono'
+        && !exists(/databases/$(db)/documents/empresas/$(request.resource.data.fid))
+        && getAfter(/databases/$(db)/documents/empresas/$(request.resource.data.fid)).data.dono == request.auth.uid;
+      allow create, update: if admin() || (
+        dono(request.resource.data.fid) && ativa(request.resource.data.fid)
+        && request.resource.data.papel in ['piloto']
+        && (resource == null || resource.data.fid == request.resource.data.fid));
+      allow delete: if admin() || dono(resource.data.fid);
+    }
+    match /sistema/{id} { allow read: if logado(); allow write: if admin(); }
+    match /solicitacoes/{id} {
+      allow read, update, delete: if admin();
+      allow create: if dono(request.resource.data.fid)
+        && request.resource.data.quem == request.auth.uid
+        && request.resource.data.status == 'pendente'
+        && request.resource.data.msg is string && request.resource.data.msg.size() < 2000
+        && request.resource.data.keys().hasOnly(['fid','fazNome','nome','quem','tipo','msg','status','criadoEm']);
+    }
+    match /pagamentos/{id} { allow read, write: if admin(); }
+  }
+}

@@ -56,7 +56,7 @@ td.n,th.n{text-align:right;white-space:nowrap}
 .est-list .p{display:flex;justify-content:space-between;align-items:center;padding:14px 6px;border-bottom:1px solid #eceee9}
 .est-list .p b{font-size:18px}.est-list .q{font-size:24px;font-weight:700;text-align:right;white-space:nowrap}
 .est-list .cat{background:#e8efe5;padding:6px 8px;font-weight:600;font-size:13px;color:#335;margin-top:8px;border-radius:5px}
-.lic{padding:9px 14px;font-size:14px}.lic.aviso{background:#fff3cd;color:#6b4e00}.lic.venc{background:#f8d7d3;color:#7a1f15;font-weight:600}
+.lic{padding:9px 14px;font-size:14px}.lic.teste{background:#e3f3e1;color:#24632c}.lic.aviso{background:#fff3cd;color:#6b4e00}.lic.venc{background:#f8d7d3;color:#7a1f15;font-weight:600}
 .fz-card .chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.chip{border:1px solid #c9cfc6;border-radius:16px;padding:5px 10px;font-size:13px;cursor:pointer;user-select:none;background:#fff}
 .bdg:not(:empty){background:#d99a1e;color:#fff;border-radius:10px;padding:1px 7px;font-size:12px;margin-left:3px}
 .chip.on{background:#2f5d34;color:#fff;border-color:#2f5d34}.st{display:inline-block;padding:3px 9px;border-radius:12px;font-size:12px;font-weight:700}
@@ -117,7 +117,7 @@ tr.novo td{background:#fff6c9;transition:background 1s}
   </div>
   <div class="card hide" id="lgCad">
     <h2>Criar conta de cliente</h2>
-    <p class="muted" style="margin-top:0" id="cInfo">Crie seu acesso com seu e-mail e uma senha que só você sabe. Você já entra e conhece o sistema; para lançar e cadastrar, é só liberar a assinatura.</p>
+    <p class="muted" style="margin-top:0" id="cInfo">Crie seu acesso com seu e-mail e uma senha que só você sabe. <b>🎁 Teste grátis até 31/12</b>, com tudo liberado e nada para pagar adiantado.</p>
     <label>Seu nome</label><input id="cNome" autocomplete="name">
     <label>Nome da empresa</label><input id="cFaz" placeholder="ex.: AgroDrone Serviços">
     <label>WhatsApp (para contato e cobrança)</label><input id="cTel" type="tel" inputmode="tel" placeholder="ex.: (42) 99999-9999">
@@ -176,7 +176,7 @@ tr.novo td{background:#fff6c9;transition:background 1s}
   </details>
   <div class="card">
     <div class="row"><div style="flex:2"><input id="aBusca" placeholder="🔍 Buscar empresa..." oninput="renderAdmin()"></div>
-    <div><select id="aFiltro" onchange="renderAdmin()"><option value="">Todas</option><option value="ativa">Ativas</option><option value="vence">Vencendo em 7 dias</option><option value="venc">Vencidas</option><option value="novo">Novos (visualizando)</option></select></div></div>
+    <div><select id="aFiltro" onchange="renderAdmin()"><option value="">Todas</option><option value="ativa">Ativas</option><option value="vence">Vencendo em 7 dias</option><option value="venc">Vencidas</option><option value="teste">Em teste grátis</option><option value="novo">Aguardando pagamento</option></select></div></div>
   </div>
   <div id="aLista"></div>
   <div class="card"><h2>💵 Pagamentos recebidos</h2><div class="scroll"><table id="aPag"></table></div></div>
@@ -563,6 +563,8 @@ const diasAte=v=>{const a=new Date(v),b=new Date();a.setHours(0,0,0,0);b.setHour
 
 // ===== licença =====
 const MODS={financeiro:'💵 Cobranças e financeiro',estoque:'🔧 Estoque de peças e produtos',mapa:'🗺️ Mapa',ia:'📷 Leitura de notas (IA)'};
+// Teste grátis: toda conta nova entra liberada até esta data (31/12/2026 23:59:59, horário de Brasília). Deve ser o MESMO número das regras do Firestore.
+const TESTE_ATE=1798772399000;
 let LIC=null; // {ativa, validade, mod:{}, nome}
 function licOk(m){return !!(LIC&&LIC.ativa&&(!m||LIC.mod[m]));}
 function lerLic(d){const l=d.licenca||{};return{nome:d.nome||'',validade:l.validade||0,ativa:Date.now()<(l.validade||0),mod:l.modulos||{},novo:!!d.novo};}
@@ -570,6 +572,8 @@ function renderLic(){const e=$('lic');if(!LIC||S.papel==='admin'){e.classList.ad
   const dias=diasAte(LIC.validade),dt=new Date(LIC.validade).toLocaleDateString('pt-BR');
   e.classList.toggle('hide',LIC.ativa&&dias>7);
   e.className=LIC.ativa?(dias>7?'hide':'lic aviso'):'lic venc';
+  if(LIC.ativa&&LIC.novo){e.className='lic teste';e.innerHTML=`🎁 Teste grátis até <b>${dt}</b>${dias<=7?` (faltam ${dias} dia${dias===1?'':'s'})`:''}. Achou algum erro ou quer alguma mudança? Toque em <b>💬 Suporte</b>.`;return;}
+  if(!LIC.ativa&&LIC.novo&&LIC.validade){e.className='lic venc';e.innerHTML=`⏰ O teste grátis terminou em ${dt}. Os seus dados estão guardados. Gostou? <button class="btn sm" style="margin:0 0 0 6px" onclick="pedirLiberacao()">✅ Continuar usando</button>`;return;}
   if(!LIC.ativa&&(LIC.novo||!LIC.validade)){e.className='lic venc';e.innerHTML=`👀 Modo de visualização: você pode ver todo o sistema, mas para lançar e cadastrar precisa liberar a assinatura. <button class="btn sm" style="margin:0 0 0 6px" onclick="pedirLiberacao()">🔓 Liberar o sistema</button>`;return;}
   e.innerHTML=LIC.ativa?`⏰ A licença do sistema vence ${dias===0?'<b>hoje</b>':`em <b>${dias} dia${dias===1?'':'s'}</b>`} (${dt}). Fale com o fornecedor para renovar.`
     :`🔒 Licença vencida em ${dt}. Os dados continuam aqui para consulta, mas não dá para lançar nada. <button class="btn sm" style="margin:0 0 0 6px" onclick="pedirLiberacao()">🔓 Renovar</button>`;}
@@ -650,7 +654,7 @@ async function criarMinhaFazenda(u,nome,faz,tel,email){
   for(let t=0;t<5;t++){
     const cod=t?base+'-'+Math.floor(1000+Math.random()*9000):base;
     const b=db.batch();
-    b.set(raiz('empresas').doc(cod),{nome:faz,cod,licenca:{validade:0,modulos:mods},novo:true,valorMensal:0,contato:tel,email,dono:u.uid,donoNome:nome,donoLogin:email,criadaEm:agora});
+    b.set(raiz('empresas').doc(cod),{nome:faz,cod,licenca:{validade:Date.now()<TESTE_ATE?TESTE_ATE:0,modulos:mods},novo:true,valorMensal:0,contato:tel,email,dono:u.uid,donoNome:nome,donoLogin:email,criadaEm:agora});
     b.set(raiz('membros').doc(u.uid),{fid:cod,papel:PAPEL_DONO,nome,login:email,criadoEm:agora});
     b.set(raiz('empresas').doc(cod).collection('usuarios').doc(u.uid),{nome,papel:PAPEL_DONO,login:email,criadoEm:agora});
     try{await b.commit();return cod;}catch(e){if(e.code!=='permission-denied')throw e;} // código já usado: tenta outro
@@ -669,11 +673,13 @@ function zap(n){n=String(n||'').replace(/\D/g,'');return n.length&&n.length<=11?
 async function pedirLiberacao(){
   if(S.papel&&S.papel!==PAPEL_DONO){toast('🔒 Sistema bloqueado. Avise o dono da empresa.');return;}
   await lerSuporte();supTipo='liberacao';
-  $('supTit').textContent=LIC&&LIC.validade?'🔒 Renovar a assinatura':'🔓 Liberar o sistema';
-  $('supTxt').innerHTML=`<p>Você está no <b>modo de visualização</b>: dá para ver tudo, mas para lançar, cadastrar e alterar é preciso ${LIC&&LIC.validade?'renovar':'ativar'} a assinatura.</p>`
+  const fimTeste=LIC&&LIC.novo&&LIC.validade;
+  $('supTit').textContent=fimTeste?'⏰ O teste grátis terminou':LIC&&LIC.validade?'🔒 Renovar a assinatura':'🔓 Liberar o sistema';
+  $('supTxt').innerHTML=(fimTeste?`<p>Obrigado por testar! Os seus dados continuam guardados e dá para consultar tudo. Para <b>continuar lançando</b>, é só ativar a assinatura.</p>`
+    :`<p>Você está no <b>modo de visualização</b>: dá para ver tudo, mas para lançar, cadastrar e alterar é preciso ${LIC&&LIC.validade?'renovar':'ativar'} a assinatura.</p>`)
    +(SUP.valor?`<p>Valor: <b>${fm(SUP.valor)}/mês</b></p>`:'')+(SUP.pix?`<p>Chave Pix: <b>${esc(SUP.pix)}</b>${SUP.pixNome?' ('+esc(SUP.pixNome)+')':''} <button class="btn sm sec" onclick="navigator.clipboard&&navigator.clipboard.writeText(${esc(JSON.stringify(SUP.pix))}).then(()=>toast('Chave Pix copiada'))">Copiar</button></p>`:'')
    +(SUP.texto?`<p class="muted">${esc(SUP.texto)}</p>`:'')+'<p>Depois de pagar, mande o comprovante pelo WhatsApp. Assim que for confirmado, o sistema libera sozinho.</p>';
-  $('supMsg').value=`Olá! Quero ${LIC&&LIC.validade?'renovar':'liberar'} o sistema para a ${LIC?LIC.nome:''} (código ${FID}).`;
+  $('supMsg').value=fimTeste?`Olá! Testei e gostei, quero continuar usando o sistema na ${LIC.nome} (código ${FID}).`:`Olá! Quero ${LIC&&LIC.validade?'renovar':'liberar'} o sistema para a ${LIC?LIC.nome:''} (código ${FID}).`;
   $('supMsgL').textContent='Mensagem';$('supRes').textContent='';$('supModal').classList.remove('hide');}
 async function abrirSuporte(){
   await lerSuporte();supTipo='suporte';$('supTit').textContent='💬 Falar com o suporte';
@@ -753,18 +759,19 @@ function iniciaAdmin(){
 function salvarSuporte(){const b=db.batch();b.set(raiz('sistema').doc('suporte'),{whats:$('sWhats').value.trim(),valor:num($('sValor').value),pix:$('sPix').value.trim(),pixNome:$('sPixNome').value.trim(),texto:$('sTexto').value.trim()});gravar(b,'Dados de cobrança salvos ✔');}
 function renderCads(){
   const Lsol=(AD.Sol||[]).filter(c=>c.status==='pendente').sort((a,b)=>a.criadoEm-b.criadoEm);
-  const Lnov=Object.values(AD.F).filter(f=>stFaz(f).k==='novo').sort((a,b)=>(a.criadaEm||0)-(b.criadaEm||0));
+  const Lnov=Object.values(AD.F).filter(f=>['novo','teste'].includes(stFaz(f).k)).sort((a,b)=>(a.criadaEm||0)-(b.criadaEm||0));
   const tel=f=>{const c=AD.F[f];return c&&c.contato?` · <a href="https://wa.me/${zap(c.contato)}" target="_blank">📞 ${esc(c.contato)}</a>`:'';};
   $('aCads').innerHTML=(Lsol.length?`<div class="card" style="border:2px solid #d99a1e"><h2 style="margin-top:0">📨 Solicitações dos clientes <span class="bdg">${Lsol.length}</span></h2>`+Lsol.map(c=>`<div style="border-top:1px solid #e3e3e3;padding:8px 0">
      <b>${c.tipo==='liberacao'?'🔓 Quer liberar/renovar':'💬 Suporte'}</b> · <b>${esc(c.fazNome||c.fid)}</b> · ${esc(c.nome||'')}${tel(c.fid)} <span class="muted">· ${new Date(c.criadoEm).toLocaleString('pt-BR')}</span>
      <div style="margin:4px 0;white-space:pre-wrap">${esc(c.msg)}</div>
      <button class="btn sm sec" onclick="solOk('${c.id}')">✔ Resolvida</button>${c.tipo==='liberacao'&&AD.F[c.fid]?` <button class="btn sm" onclick="document.getElementById('fz_${c.fid}').scrollIntoView({behavior:'smooth'})">Ir para a empresa ↓</button>`:''}</div>`).join('')+'</div>':'')
-   +(Lnov.length?`<div class="card" style="border:2px solid #2563a8"><h2 style="margin-top:0">🆕 Clientes novos (modo visualização) <span class="bdg" style="background:#2563a8">${Lnov.length}</span></h2>
-     <p class="muted" style="margin-top:0">Criaram a conta sozinhos e estão conhecendo o sistema. Para liberar, use "+7 dias" (teste) ou "Registrar pagamento" no cartão da empresa.</p>`
-     +Lnov.map(f=>`<div style="border-top:1px solid #e3e3e3;padding:6px 0"><b>${esc(f.nome)}</b> · ${esc(f.donoNome||'')} · ${esc(f.email||f.donoLogin||'')}${tel(f.id)} <span class="muted">· desde ${new Date(f.criadaEm||0).toLocaleDateString('pt-BR')}</span> <button class="btn sm" onclick="document.getElementById('fz_${f.id}').scrollIntoView({behavior:'smooth'})">Abrir ↓</button></div>`).join('')+'</div>':'');}
+   +(Lnov.length?`<div class="card" style="border:2px solid #2563a8"><h2 style="margin-top:0">🆕 Clientes que criaram conta <span class="bdg" style="background:#2563a8">${Lnov.length}</span></h2>
+     <p class="muted" style="margin-top:0">Entram em teste grátis até 31/12. Quando pagarem, use "Registrar pagamento" no cartão da empresa.</p>`
+     +Lnov.map(f=>`<div style="border-top:1px solid #e3e3e3;padding:6px 0"><span class="st ${stFaz(f).c}">${stFaz(f).t}</span> <b>${esc(f.nome)}</b> · ${esc(f.donoNome||'')} · ${esc(f.email||f.donoLogin||'')}${tel(f.id)} <span class="muted">· desde ${new Date(f.criadaEm||0).toLocaleDateString('pt-BR')}</span> <button class="btn sm" onclick="document.getElementById('fz_${f.id}').scrollIntoView({behavior:'smooth'})">Abrir ↓</button></div>`).join('')+'</div>':'');}
 function solOk(id){const b=db.batch();b.set(raiz('solicitacoes').doc(id),{status:'resolvida',resolvidaEm:Date.now()},{merge:true});gravar(b,'Marcada como resolvida');}
 function stFaz(f){const v=(f.licenca||{}).validade||0,d=diasAte(v);
-  if(f.novo&&v<=Date.now())return{k:'novo',c:'w',t:'🆕 Novo · só visualizando'};
+  if(f.novo&&v<=Date.now())return{k:'novo',c:'w',t:v?'⏰ Teste acabou · aguardando pagamento':'🆕 Novo · só visualizando'};
+  if(f.novo)return{k:'teste',c:'a',t:`🎁 Em teste grátis até ${new Date(v).toLocaleDateString('pt-BR')}`};
   return v<=Date.now()?{k:'venc',c:'v',t:`Vencida há ${Math.max(1,-d)} dia${-d===1?'':'s'}`}:d<=7?{k:'vence',c:'w',t:(d===0?'Vence hoje':`Vence em ${d} dia${d===1?'':'s'}`)}:{k:'ativa',c:'a',t:`Ativa até ${new Date(v).toLocaleDateString('pt-BR')}`};}
 function maisMeses(base,meses){const d=new Date(Math.max(base||0,Date.now()));d.setMonth(d.getMonth()+meses);d.setHours(23,59,59,0);return d.getTime();}
 async function criarFazenda(){
@@ -802,11 +809,11 @@ function adPagar(fid){const f=AD.F[fid],val=num($('ad_pv_'+fid).value),m=Math.ma
 function adExcluirPag(id){if(!confirm('Excluir este pagamento da lista? (a validade não muda)'))return;const b=db.batch();b.delete(raiz('pagamentos').doc(id));gravar(b,'Pagamento excluído');}
 function renderAdmin(){
   const fs=Object.values(AD.F).sort((a,b)=>ord(a.nome,b.nome)),mes=hoje().slice(0,7);
-  const n={ativa:0,vence:0,venc:0,novo:0};fs.forEach(f=>n[stFaz(f).k]++);
+  const n={ativa:0,vence:0,venc:0,novo:0,teste:0};fs.forEach(f=>n[stFaz(f).k]++);
   const recMes=AD.Pg.filter(p=>p.data.startsWith(mes)).reduce((s,p)=>s+p.valor,0);
   const prev=fs.filter(f=>stFaz(f).k!=='venc').reduce((s,f)=>s+(f.valorMensal||0),0);
   $('adKpis').innerHTML=`<div class="kpi"><small>Empresas ativas</small><b class="pos">${n.ativa+n.vence}</b><small>${fs.length} no total</small></div>
-   <div class="kpi"><small>Vencendo em 7 dias</small><b style="color:#9a6a00">${n.vence}</b></div><div class="kpi"><small>Vencidas</small><b class="neg">${n.venc}</b><small>${n.novo} cliente(s) novo(s) só visualizando</small></div>
+   <div class="kpi"><small>🎁 Em teste grátis</small><b class="pos">${n.teste}</b></div><div class="kpi"><small>Vencendo em 7 dias</small><b style="color:#9a6a00">${n.vence}</b></div><div class="kpi"><small>Vencidas</small><b class="neg">${n.venc}</b><small>${n.novo} aguardando pagamento</small></div>
    <div class="kpi"><small>Recebido no mês</small><b class="pos">${fm(recMes)}</b><small>mensalidades ativas: ${fm(prev)}</small></div>`;
   const b=$('aBusca').value.toLowerCase(),fl=$('aFiltro').value;
   const ae=document.activeElement;if(ae&&$('aLista').contains(ae)&&ae.tagName!=='BUTTON')return; // não redesenha enquanto digita
