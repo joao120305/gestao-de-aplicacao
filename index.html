@@ -645,19 +645,28 @@ async function cadastrar(){
     await criarMinhaFazenda(u,nome,faz,tel,email);
     cadastrando=false;await abrir(auth.currentUser);
   }catch(e){cadastrando=false;if(auth.currentUser)telaCompletar();
-    const m={'permission-denied':'O servidor recusou (permissão). Avise o suporte: as regras do Firebase precisam ser atualizadas.','auth/email-already-in-use':'Já existe uma conta com esse e-mail. Volte e clique em "Entrar" (ou "Esqueci minha senha").','auth/invalid-email':'E-mail inválido','auth/weak-password':'Senha fraca (mínimo 6 caracteres)','auth/network-request-failed':'Sem internet.'};
+    const m={'permission-denied':`O servidor recusou (permissão, passo ${e.passo||'?'}). Mande um print desta tela para o suporte.`,'auth/email-already-in-use':'Já existe uma conta com esse e-mail. Volte e clique em "Entrar" (ou "Esqueci minha senha").','auth/invalid-email':'E-mail inválido','auth/weak-password':'Senha fraca (mínimo 6 caracteres)','auth/network-request-failed':'Sem internet.'};
     $('cMsg').textContent=m[e.code]||('Erro: '+(e.message||e.code));}
   $('cBtn').disabled=false;}
 async function criarMinhaFazenda(u,nome,faz,tel,email){
+  // grava um passo de cada vez, para o erro dizer exatamente onde parou
   const base=slug(faz).replace(/-(servicos|aplicacoes|agricolas|ltda|me)$/g,'').slice(0,24)||'empresa',agora=Date.now(),mods={};Object.keys(MODS).forEach(k=>mods[k]=!['ordens','piloto'].includes(k)); // conta nova: estoque + finanças + talhões (modo simples)
-  for(let t=0;t<5;t++){
-    const cod=t?base+'-'+Math.floor(1000+Math.random()*9000):base;
-    const b=db.batch();
-    b.set(raiz('empresas').doc(cod),{nome:faz,cod,licenca:{validade:Date.now()<TESTE_ATE?TESTE_ATE:0,modulos:mods},novo:true,valorMensal:0,contato:tel,email,dono:u.uid,donoNome:nome,donoLogin:email,criadaEm:agora});
-    b.set(raiz('membros').doc(u.uid),{fid:cod,papel:PAPEL_DONO,nome,login:email,criadoEm:agora});
-    b.set(raiz('empresas').doc(cod).collection('usuarios').doc(u.uid),{nome,papel:PAPEL_DONO,login:email,criadoEm:agora});
-    try{await b.commit();return cod;}catch(e){if(e.code!=='permission-denied'||t===4)throw e;} // código já usado: tenta outro
-  }}
+  const passo=(n,e)=>{const x=new Error(e.message||e.code);x.code=e.code;x.passo=n;return x;};
+  let cod=null;
+  // passo 1: a fazenda (se o código já for de outra pessoa, tenta outro)
+  for(let t=0;t<6&&!cod;t++){
+    const c=t?base+'-'+Math.floor(1000+Math.random()*9000):base;
+    try{await raiz('empresas').doc(c).set({nome:faz,cod:c,licenca:{validade:Date.now()<TESTE_ATE?TESTE_ATE:0,modulos:mods},novo:true,valorMensal:0,contato:tel,email,dono:u.uid,donoNome:nome,donoLogin:email,criadaEm:agora});cod=c;}
+    catch(e){
+      if(e.code!=='permission-denied')throw passo(1,e);
+      try{const d=await raiz('empresas').doc(c).get();if(d.exists&&d.data().dono===u.uid)cod=c;}catch(e2){} // já é minha (tentativa anterior)
+      if(!cod&&t===5)throw passo(1,e);}
+  }
+  // passo 2: ligar a conta à fazenda
+  try{await raiz('membros').doc(u.uid).set({fid:cod,papel:PAPEL_DONO,nome,login:email,criadoEm:agora});}catch(e){throw passo(2,e);}
+  // passo 3: aparecer na lista de usuários (se falhar, não atrapalha)
+  try{await raiz('empresas').doc(cod).collection('usuarios').doc(u.uid).set({nome,papel:PAPEL_DONO,login:email,criadoEm:agora});}catch(e){}
+  return cod;}
 function telaCompletar(){ // conta existe mas sem fazenda (ex.: caiu a internet no meio do cadastro)
   $('login').classList.remove('hide');telaLogin('cad');$('cAcesso').classList.add('hide');$('cVoltar').classList.add('hide');
   $('cInfo').innerHTML=`Falta só criar a sua empresa para a conta <b>${esc(auth.currentUser.email)}</b>.`;$('cBtn').textContent='Criar minha empresa';}
