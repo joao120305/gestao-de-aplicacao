@@ -229,6 +229,7 @@ tr.novo td{background:#fff6c9;transition:background 1s}
   <button data-t="map">🗺️ Mapa</button>
   <button data-t="est">🔧 Estoque</button>
   <button data-t="fin">💰 Financeiro</button>
+  <button data-t="pag">📅 Contas a pagar <span id="pagBadge" class="bdg"></span></button>
   <button data-t="usu">Usuários</button>
   <button data-t="bkp">Backup</button>
 </nav>
@@ -467,6 +468,39 @@ tr.novo td{background:#fff6c9;transition:background 1s}
   </div>
 </section>
 
+<section id="t-pag" class="hide">
+  <div class="kpis" id="cpKpis"></div>
+  <div class="card">
+    <h2>➕ Nova conta a pagar</h2>
+    <div class="seg" id="cpSeg"><button data-k="unica" class="on" onclick="cpTipo('unica')">📄 Conta única</button><button data-k="mensal" onclick="cpTipo('mensal')">🔁 Todo mês</button><button data-k="parc" onclick="cpTipo('parc')">🏦 Financiamento / parcelado</button></div>
+    <div class="row">
+      <div style="flex:2"><label>Descrição</label><input id="cpDesc" placeholder="ex.: Financiamento do trator, energia, arrendamento"></div>
+      <div><label>Tipo de despesa</label><select id="cpGrupo"></select></div>
+    </div>
+    <div class="row">
+      <div><label id="cpValL">Valor (R$)</label><input id="cpVal" type="number" inputmode="decimal" step="any" min="0" oninput="cpPrevia()"></div>
+      <div class="cpParc hide"><label>Nº de parcelas</label><input id="cpN" type="number" inputmode="numeric" min="1" value="12" oninput="cpPrevia()"></div>
+      <div class="cpParc hide"><label>Vence a cada</label><select id="cpPer" onchange="cpPrevia()"><option value="1">1 mês</option><option value="3">3 meses</option><option value="6">6 meses</option><option value="12">1 ano (safra)</option></select></div>
+      <div class="cpMes hide"><label>Repetir por quantos meses</label><input id="cpMeses" type="number" inputmode="numeric" min="1" value="12" oninput="cpPrevia()"></div>
+      <div><label id="cpVencL">Vencimento</label><input id="cpVenc" type="date" onchange="cpPrevia()"></div>
+    </div>
+    <div class="row">
+      <div><label>Fornecedor / banco</label><input id="cpForn" placeholder="ex.: Banco do Brasil, Copel, Sicredi"></div>
+      <div style="flex:2"><label>Onde entra o custo quando pagar</label><select id="cpOnde"></select></div>
+    </div>
+    <p class="muted" id="cpPrev" style="margin:4px 0"></p>
+    <button class="btn" onclick="cpSalvar()">Salvar</button>
+    <p class="muted" style="margin:8px 0 0">Quando você clica em <b>✔ Pagar</b>, a conta vira uma despesa no financeiro na data do pagamento (e entra no custo do lugar escolhido acima). Dá para mudar o valor na hora de pagar (juros ou desconto).</p>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="margin:0">📅 Contas</h2>
+      <select id="cpFiltro" onchange="renderContas()" style="max-width:200px;margin:0"><option value="abertas">A pagar</option><option value="pagas">Pagas</option><option value="todas">Todas</option></select></div>
+    <div class="scroll"><table id="cpLista"></table></div>
+  </div>
+  <div class="card"><h2>🏦 Financiamentos e parcelamentos</h2><div class="scroll"><table id="cpSeries"></table></div></div>
+</section>
+
+
 <!-- USUÁRIOS -->
 <section id="t-usu" class="hide">
   <div class="card" id="meCard">
@@ -480,6 +514,13 @@ tr.novo td{background:#fff6c9;transition:background 1s}
     </div>
     <button class="btn" onclick="meSalvar()">Salvar</button>
     <p class="muted" id="meMsg"></p>
+    <details id="exBox" style="margin-top:16px;border-top:1px solid #eee;padding-top:10px"><summary style="cursor:pointer;color:#b23b2e;font-weight:600">⚠️ Excluir minha conta</summary>
+      <p>Apaga a sua conta e <b>todos os dados</b> (aplicações, clientes, cobranças, financeiro, estoque, usuários e o resto). <b>Não dá para desfazer.</b> Se quiser guardar alguma coisa, baixe antes um arquivo na aba <b>Backup</b>.</p>
+      <div class="row"><div><label>Digite EXCLUIR para confirmar</label><input id="exConf" autocapitalize="characters" autocomplete="off"></div>
+      <div><label>Sua senha</label><input id="exSenha" type="password" autocomplete="current-password"></div></div>
+      <button class="btn" style="background:#b23b2e" onclick="excluirConta()">Excluir minha conta para sempre</button>
+      <p class="muted" id="exMsg"></p>
+    </details>
   </div>
   <div class="card">
     <h2>Novo piloto</h2>
@@ -716,6 +757,28 @@ async function meSalvar(){const u=auth.currentUser,em=$('meEmail').value.trim().
     $('meMsg').innerHTML=ms.join('<br>');['meEmail','meNova','meSenha'].forEach(i=>$(i).value='');
   }catch(e){const m={'auth/invalid-credential':'Senha atual errada','auth/wrong-password':'Senha atual errada','auth/email-already-in-use':'Esse e-mail já é usado por outra conta','auth/invalid-email':'E-mail inválido','auth/too-many-requests':'Muitas tentativas. Espere uns minutos.'};
     $('meMsg').textContent=m[e.code]||('Erro: '+(e.message||e.code));}}
+async function excluirConta(){
+  const u=auth.currentUser,sa=$('exSenha').value;
+  if($('exConf').value.trim().toUpperCase()!=='EXCLUIR'){toast('Digite EXCLUIR para confirmar');return;}
+  if(!sa){toast('Digite a sua senha');return;}
+  if(!navigator.onLine){toast('Precisa de internet');return;}
+  if(!confirm('ÚLTIMA CONFIRMAÇÃO\n\nApagar a sua conta e TODOS os dados para sempre?'))return;
+  const msg=t=>$('exMsg').textContent=t;
+  try{
+    msg('Conferindo a senha...');await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email,sa));
+    S.unsub.forEach(f=>f());S.unsub=[];
+    const uids=new Set();
+    for(const c of COLS_TODAS){msg('Apagando '+c+'...');const sn=await col(c).get();if(c==='usuarios')sn.docs.forEach(d=>uids.add(d.id));
+      for(let i=0;i<sn.docs.length;i+=400){const b=db.batch();sn.docs.slice(i,i+400).forEach(d=>b.delete(d.ref));await b.commit();}}
+    msg('Apagando os acessos dos funcionários...');
+    for(const id of uids)if(id!==u.uid){try{await raiz('membros').doc(id).delete();}catch(e){}}
+    await raiz('empresas').doc(FID).delete();
+    await raiz('membros').doc(u.uid).delete();
+    try{Object.keys(localStorage).filter(k=>k.includes(u.uid)||k.includes(FID)).forEach(k=>localStorage.removeItem(k));}catch(e){}
+    msg('Apagando a conta...');await u.delete();
+    alert('Sua conta e os dados foram excluídos. Obrigado por ter usado o sistema.');location.hash='';location.reload();
+  }catch(e){const m={'auth/invalid-credential':'Senha errada','auth/wrong-password':'Senha errada','auth/too-many-requests':'Muitas tentativas. Espere uns minutos.','permission-denied':'O servidor recusou. Mande um print para o suporte.'};
+    msg(m[e.code]||('Erro: '+(e.message||e.code)));}}
 function sair(sem){if(!sem&&!confirm('Sair desta conta?'))return;S.unsub.forEach(f=>f());S.unsub=[];auth.signOut();}
 
 auth.onAuthStateChanged(user=>{if(!cadastrando)abrir(user);});
@@ -866,6 +929,7 @@ function renderUsu(){$('uCod').textContent=FID||'';
     <td class="n">${x.id===S.uid?'<span class="muted">você</span>':`<button class="btn sm sec" onclick="removerUsu('${x.id}')">Remover</button>`}</td></tr>`).join('');}
 
 function baixar(nome,conteudo,tipoMime){const b=new Blob([conteudo],{type:tipoMime});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=nome;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
+const COLS_TODAS=['aplicacoes','aplValores','clientes','clientesPreco','drones','catalogo','movimentos','precos','precoVenda','receber','financeiro','contas','notas','config','usuarios']; // apagado ao excluir a conta
 
 // =====================================================================
 //  APP DRONE – aplicações, clientes, cobranças, estoque, financeiro
@@ -887,7 +951,7 @@ function linkMapa(a){return a.lat!=null&&a.lng!=null?`https://www.google.com/map
 function bip(){try{const a=new(window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.frequency.value=880;o.connect(a.destination);o.start();o.stop(a.currentTime+.15);setTimeout(()=>a.close(),400);}catch(e){}}
 
 // ---------------- MÓDULOS ----------------
-const TAB_MOD={fat:'financeiro',rec:'financeiro',fin:'financeiro',est:'estoque',map:'mapa'};
+const TAB_MOD={fat:'financeiro',rec:'financeiro',fin:'financeiro',pag:'financeiro',est:'estoque',map:'mapa'};
 function aplicaModulos(){
   document.querySelectorAll('.iaBtn').forEach(b=>b.classList.toggle('hide',!LIC.mod.ia));
   if(S.papel==='dono'){
@@ -914,6 +978,7 @@ function iniciaDono(){
   escuta('financeiro',s=>{S.F=lista(s);agenda(render);});
   escuta('usuarios',s=>{S.U=mapa(s);agenda(render);});
   escuta('aplValores',s=>{S.V=mapa(s);agenda(render);});
+  escuta('contas',s=>{S.CT=lista(s);agenda(render);});
   S.unsub.push(col('config').doc('custos').onSnapshot(d=>{S.cfg=d.exists?d.data():{};if(document.activeElement!==$('gKmCusto'))$('gKmCusto').value=S.cfg.kmCusto||'';agenda(render);},()=>{}));
   if(!$('fProds').children.length)fAddProd();setGTipo('D');}
 function iniciaPiloto(){
@@ -1045,7 +1110,7 @@ function salvarValores(id){const a=S.A.find(x=>x.id===id),tr=$('ev_'+id),g=c=>nu
   gravar(b,`💰 Valores salvos · cobrado ${fm(tot)}`);tr.remove();}
 
 // ---------------- RENDER GERAL (dono) ----------------
-function render(){if(S.papel!=='dono')return;calcCustos();renderFormOpcoes();renderApl();renderFat();renderRec();renderCli();renderEst();renderFin();renderUsu();
+function render(){if(S.papel!=='dono')return;calcCustos();renderFormOpcoes();renderApl();renderFat();renderRec();renderCli();renderEst();renderFin();renderUsu();renderContas();
   if(!$('t-map').classList.contains('hide'))renderMapa();}
 
 // ---------------- APLICAÇÕES (dono) ----------------
@@ -1303,7 +1368,8 @@ function renderVida(){
 
 // ---------------- FINANCEIRO ----------------
 function salvarKmCusto(){const v=num($('gKmCusto').value);const b=db.batch();b.set(col('config').doc('custos'),{kmCusto:v},{merge:true});gravar(b,'Custo por km salvo: '+fm(v));}
-const GD={pecas:'🔧 Peças e manutenção',produtos:'🧪 Compra de produtos',combustivel:'⛽ Combustível / gerador',pessoal:'👷 Pilotos e funcionários',ajudante:'🧑‍🌾 Ajudantes',viagem:'🚗 Viagem e alimentação',impostos:'📄 Impostos e taxas',outros:'📦 Outras despesas'};
+const GD={pecas:'🔧 Peças e manutenção',produtos:'🧪 Compra de produtos',combustivel:'⛽ Combustível / gerador',pessoal:'👷 Pilotos e funcionários',ajudante:'🧑‍🌾 Ajudantes',viagem:'🚗 Viagem e alimentação',impostos:'📄 Impostos e taxas',financ:'🏦 Financiamentos e parcelas',outros:'📦 Outras despesas'};
+const CP_GR=GD,CP_CAT=null;
 const GR2={recebimento:'💵 Recebimento de cliente',outras:'➕ Outras receitas'};
 let gtipo='D';
 function setGTipo(t){gtipo=t;$('gDes').classList.toggle('on',t==='D');$('gRec').classList.toggle('on',t==='R');
@@ -1312,7 +1378,8 @@ function salvarFin(){const v=num($('gVal').value),d=$('gDesc').value.trim();if(v
   const b=db.batch();b.set(col('financeiro').doc(),{tipo:gtipo,grupo:$('gGrupo').value,desc:d,val:v,data:$('gData').value||hoje(),drone:$('gDrone').value,criadoEm:Date.now()});
   gravar(b,gtipo==='D'?'Despesa salva ✔':'Receita salva ✔');$('gVal').value='';$('gDesc').value='';}
 function excluirFin(id){const f=S.F.find(x=>x.id===id);if(f.rec){toast('Este é um recebimento de cobrança. Para desfazer, fale com o suporte ou ajuste a cobrança.');}
-  if(!confirm('Excluir este lançamento?'))return;const b=db.batch();b.delete(col('financeiro').doc(id));
+  if(!confirm(f.conta?'Excluir este lançamento? A conta volta a ficar em aberto em "Contas a pagar".':'Excluir este lançamento?'))return;const b=db.batch();b.delete(col('financeiro').doc(id));
+  if(f.conta)(S.CT||[]).filter(c=>c.finId===id||c.quitFin===id).forEach(c=>b.set(col('contas').doc(c.id),{status:'aberta',pagaEm:'',valPago:0,finId:'',quitFin:''},{merge:true}));
   if(f.rec){const r=S.R.find(x=>x.id===f.rec);if(r){const novo=Math.max(0,+((r.pago||0)-f.val).toFixed(2));b.set(col('receber').doc(r.id),{pago:novo,pagoEm:novo>=r.valor-0.009?(r.pagoEm||f.data):''},{merge:true});}}
   gravar(b,'Lançamento excluído');}
 function renderFin(){
@@ -1482,6 +1549,92 @@ function salvarNota(){notaCalc();const its=NOTA.itens,tot=num($('nTot').value)||
   gravar(b,`📷 Nota salva: despesa ${fm(tot)}${nEst?` e ${nEst} item(ns) no estoque`:''} ✔`);fecharNota();}
 async function verNota(src){if(!src)return;$('notaImg').src=src;$('notaVer').classList.remove('hide');}
 async function verNotaId(id){try{const d=await col('notas').doc(id).get();if(d.exists)verNota(d.data().img);else toast('Foto da nota não encontrada');}catch(e){toast('Não foi possível abrir a foto');}}
+
+// ================= CONTAS A PAGAR (conta única, todo mês, financiamento/parcelado) =================
+// Cada parcela é um documento em "contas". Ao pagar, vira uma despesa normal no financeiro (entra no custo por talhão/hectare se foi escolhido).
+let cpK='unica';S.CT=S.CT||[];let cpAvisou=false;
+function cpTipo(k){cpK=k;document.querySelectorAll('#cpSeg button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
+  document.querySelectorAll('.cpParc').forEach(e=>e.classList.toggle('hide',k!=='parc'));document.querySelectorAll('.cpMes').forEach(e=>e.classList.toggle('hide',k!=='mensal'));
+  $('cpValL').textContent=k==='parc'?'Valor de cada parcela (R$)':'Valor (R$)';$('cpVencL').textContent=k==='unica'?'Vencimento':'1º vencimento';cpPrevia();}
+function cpMaisMeses(ds,m){const [y,mo,d]=ds.split('-').map(Number);const x=new Date(y,mo-1+m,1);const ult=new Date(x.getFullYear(),x.getMonth()+1,0).getDate();x.setDate(Math.min(d,ult));
+  return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');}
+function cpDatas(){const v=$('cpVenc').value;if(!v)return[];
+  if(cpK==='unica')return[v];
+  if(cpK==='mensal'){const n=Math.min(60,Math.max(1,Math.round(num($('cpMeses').value)||12)));return[...Array(n)].map((_,i)=>cpMaisMeses(v,i));}
+  const n=Math.min(240,Math.max(1,Math.round(num($('cpN').value)||1))),p=Math.round(num($('cpPer').value))||1;return[...Array(n)].map((_,i)=>cpMaisMeses(v,i*p));}
+function cpPrevia(){const d=cpDatas(),v=num($('cpVal').value);
+  $('cpPrev').innerHTML=d.length>1&&v?`Vai criar <b>${d.length} contas</b> de ${fm(v)} (de ${fd(d[0])} até ${fd(d[d.length-1])}) · total <b>${fm(v*d.length)}</b>`:'';}
+function cpOndeOps(){ // onde entra o custo (fazenda: talhões; drone: drone)
+  if(typeof talhoesOrdenados==='function')return '<option value="">Despesa geral (não entra no custo dos talhões)</option><option value="rateio">↔ Custo por hectare: ratear entre todos os talhões pela área</option>'+talhoesOrdenados().map(t=>`<option value="${t.id}">Só no ${esc(t.nome)}</option>`).join('');
+  return '<option value="">Despesa geral da empresa</option>'+Object.values(S.Dr||{}).sort((a,b)=>ord(a.nome,b.nome)).map(d=>`<option value="d:${d.id}">🚁 ${esc(d.nome)}</option>`).join('');}
+function cpGrupos(){return Object.entries(CP_GR).map(([k,n])=>`<option value="${k}">${n}</option>`).join('');}
+function cpSalvar(){
+  const desc=$('cpDesc').value.trim(),val=num($('cpVal').value),datas=cpDatas();
+  if(!desc){toast('Preencha a descrição');return;}if(val<=0){toast('Informe o valor');return;}if(!datas.length){toast('Informe o vencimento');return;}
+  const onde=$('cpOnde').value,grupo=$('cpGrupo').value,serie=datas.length>1?col('contas').doc().id:'',agora=Date.now(),n=datas.length;
+  const extra=onde.startsWith('d:')?{drone:onde.slice(2)}:{tal:onde&&onde!=='rateio'?onde:'',rateio:onde==='rateio'};
+  if(n>1&&!confirm(`Criar ${n} contas de ${fm(val)}?\nPrimeira: ${fd(datas[0])} · Última: ${fd(datas[n-1])}\nTotal: ${fm(val*n)}`))return;
+  const b=db.batch();
+  datas.forEach((dt,i)=>b.set(col('contas').doc(),{desc,grupo,val,venc:dt,tipo:cpK,serie,parcela:cpK==='parc'?`${i+1}/${n}`:'',nParc:n,fornecedor:$('cpForn').value.trim(),...extra,status:'aberta',criadoEm:agora+i}));
+  gravar(b,n>1?`📅 ${n} contas criadas ✔`:'📅 Conta salva ✔');
+  ['cpDesc','cpVal','cpForn'].forEach(i=>$(i).value='');$('cpPrev').textContent='';}
+function cpRotulo(c){return esc(c.desc)+(c.parcela?` <b>· parcela ${c.parcela}</b>`:c.tipo==='mensal'?' <span class="muted">· mensal</span>':'');}
+function cpOndeTxt(c){if(c.drone){const d=(S.Dr||{})[c.drone];return '🚁 '+esc(d?d.nome:'drone');}return c.rateio?'↔ rateado por hectare':c.tal?'🌱 '+esc(typeof talNome==='function'?talNome(c.tal):''):'geral';}
+function cpPagar(id){const c=S.CT.find(x=>x.id===id);if(!c)return;
+  const val=num($('cpv_'+id).value)||c.val,dt=$('cpd_'+id).value||hoje();
+  const fin={tipo:'D',grupo:c.grupo,desc:c.desc+(c.parcela?` (parcela ${c.parcela})`:''),val,data:dt,fornecedor:c.fornecedor||'',conta:id,criadoEm:Date.now()};
+  if(CP_CAT&&CP_CAT[c.grupo])fin.cat=CP_CAT[c.grupo];
+  if(c.drone)fin.drone=c.drone;else if(typeof talhoesOrdenados==='function'){fin.tal=c.tal||'';fin.rateio=!!c.rateio;}
+  const b=db.batch(),fr=col('financeiro').doc();b.set(fr,fin);b.set(col('contas').doc(id),{status:'paga',pagaEm:dt,valPago:val,finId:fr.id},{merge:true});
+  gravar(b,`✔ Paga: ${c.desc}${c.parcela?' '+c.parcela:''} · ${fm(val)} lançado nas despesas`);}
+function cpDesfazer(id){const c=S.CT.find(x=>x.id===id);if(!c)return;const fid=c.quitFin||c.finId,l=c.quitFin?S.CT.filter(x=>x.quitFin===c.quitFin):[c];
+  if(!confirm(l.length>1?`Desfazer a quitação? As ${l.length} parcelas voltam a ficar em aberto e a despesa sai do financeiro.`:'Desfazer o pagamento? A despesa sai do financeiro e a conta volta a ficar em aberto.'))return;
+  const b=db.batch();if(fid)b.delete(col('financeiro').doc(fid));l.forEach(x=>b.set(col('contas').doc(x.id),{status:'aberta',pagaEm:'',valPago:0,finId:'',quitFin:''},{merge:true}));gravar(b,'Pagamento desfeito');}
+function cpExcluir(id){const c=S.CT.find(x=>x.id===id);if(!c)return;
+  if(c.status==='paga'){toast('Esta conta já foi paga. Desfaça o pagamento antes de excluir.');return;}
+  const abertas=c.serie?S.CT.filter(x=>x.serie===c.serie&&x.status!=='paga'):[c];
+  const tudo=abertas.length>1&&confirm(`Esta conta faz parte de "${c.desc}".\n\nOK = excluir TODAS as ${abertas.length} contas em aberto dela\nCancelar = escolher excluir só esta`);
+  if(!tudo&&!confirm(`Excluir só esta conta (${fd(c.venc)} · ${fm(c.val)})?`))return;
+  const b=db.batch();(tudo?abertas:[c]).forEach(x=>b.delete(col('contas').doc(x.id)));gravar(b,tudo?`${abertas.length} contas excluídas`:'Conta excluída');}
+function cpQuitar(serie){const l=S.CT.filter(x=>x.serie===serie&&x.status!=='paga').sort((a,b)=>a.venc.localeCompare(b.venc));if(!l.length)return;
+  const v=prompt(`Quitar o restante de "${l[0].desc}" (${l.length} parcelas · ${fm(l.reduce((s,x)=>s+x.val,0))})?\nValor pago para quitar (R$):`,String(+l.reduce((s,x)=>s+x.val,0).toFixed(2)));
+  if(v===null)return;const val=num(String(v).replace(',','.'));if(val<=0){toast('Valor inválido');return;}
+  const c=l[0],dt=hoje(),b=db.batch(),fr=col('financeiro').doc();
+  const fin={tipo:'D',grupo:c.grupo,desc:`${c.desc} (quitação de ${l.length} parcelas)`,val,data:dt,fornecedor:c.fornecedor||'',conta:c.id,criadoEm:Date.now()};
+  if(CP_CAT&&CP_CAT[c.grupo])fin.cat=CP_CAT[c.grupo];if(c.drone)fin.drone=c.drone;else if(typeof talhoesOrdenados==='function'){fin.tal=c.tal||'';fin.rateio=!!c.rateio;}
+  b.set(fr,fin);l.forEach((x,i)=>b.set(col('contas').doc(x.id),{status:'paga',pagaEm:dt,valPago:i?0:val,finId:i?'':fr.id,quitFin:fr.id},{merge:true}));
+  gravar(b,'🏦 Financiamento quitado ✔');}
+function renderContas(){
+  if(!$('cpLista'))return;
+  const ho=hoje(),em30=cpMaisMeses(ho,1),CT=S.CT||[];
+  if(!$('cpVenc').value)$('cpVenc').value=ho;
+  const g=$('cpGrupo').value;$('cpGrupo').innerHTML=cpGrupos();if(g)$('cpGrupo').value=g;else $('cpGrupo').value=CP_GR.financ?'financ':Object.keys(CP_GR)[0];
+  const o=$('cpOnde').value;$('cpOnde').innerHTML=cpOndeOps();if([...$('cpOnde').options].some(x=>x.value===o))$('cpOnde').value=o;
+  const ab=CT.filter(c=>c.status!=='paga'),venc=ab.filter(c=>c.venc<ho),hj=ab.filter(c=>c.venc===ho),prox=ab.filter(c=>c.venc>ho&&c.venc<=em30);
+  const mes=ho.slice(0,7),pgMes=CT.filter(c=>c.status==='paga'&&(c.pagaEm||'').startsWith(mes));
+  const s=l=>l.reduce((t,c)=>t+c.val,0);
+  $('cpKpis').innerHTML=`<div class="kpi"><small>⚠️ Vencidas</small><b class="neg">${fm(s(venc))}</b><small>${venc.length} conta(s)</small></div>
+   <div class="kpi"><small>📌 Vencem hoje</small><b style="color:#9a6a00">${fm(s(hj))}</b><small>${hj.length} conta(s)</small></div>
+   <div class="kpi"><small>📅 Próximos 30 dias</small><b>${fm(s(prox))}</b><small>${prox.length} conta(s)</small></div>
+   <div class="kpi"><small>💳 Total em aberto</small><b>${fm(s(ab))}</b><small>pago no mês: ${fm(pgMes.reduce((t,c)=>t+(c.valPago||c.val),0))}</small></div>`;
+  const nb=venc.length+hj.length;if($('pagBadge'))$('pagBadge').textContent=nb?nb:'';
+  if(!cpAvisou&&CT.length){cpAvisou=true;if(nb)setTimeout(()=>toast(`📅 ${venc.length?venc.length+' conta(s) vencida(s)':''}${venc.length&&hj.length?' e ':''}${hj.length?hj.length+' vence(m) hoje':''}. Veja em Contas a pagar.`),1200);}
+  const fl=$('cpFiltro').value;
+  const L=(fl==='abertas'?ab:fl==='pagas'?CT.filter(c=>c.status==='paga'):CT).slice().sort((a,b)=>fl==='pagas'?(b.pagaEm||'').localeCompare(a.pagaEm||''):a.venc.localeCompare(b.venc)).slice(0,fl==='abertas'?120:200);
+  const st=c=>{if(c.status==='paga')return`<span class="ok">✔ paga ${fd(c.pagaEm)}${c.valPago&&Math.abs(c.valPago-c.val)>0.009?' · '+fm(c.valPago):''}</span>`;
+    const d=diasAte(new Date(c.venc+'T23:59:59').getTime());return d<0?`<span class="bad">vencida há ${-d} dia${d===-1?'':'s'}</span>`:d===0?'<span class="wait">vence hoje</span>':`<span class="muted">em ${d} dia${d===1?'':'s'}</span>`;};
+  $('cpLista').innerHTML=L.length?'<tr><th>Vencimento</th><th>Conta</th><th class="n">Valor</th><th></th></tr>'+L.map(c=>`<tr${c.status!=='paga'&&c.venc<ho?' style="background:#fdecea"':c.venc===ho&&c.status!=='paga'?' style="background:#fff7e6"':''}>
+    <td>${fd(c.venc)}<br>${st(c)}</td><td>${(CP_GR[c.grupo]||'').split(' ')[0]} ${cpRotulo(c)}<br><span class="muted">${cpOndeTxt(c)}${c.fornecedor?' · '+esc(c.fornecedor):''}</span></td>
+    <td class="n"><b>${fm(c.val)}</b></td>
+    <td class="n" style="white-space:nowrap">${c.status==='paga'?`<button class="btn sm sec" onclick="cpDesfazer('${c.id}')">↩ desfazer</button>`
+      :`<input id="cpd_${c.id}" type="date" value="${ho}" style="width:140px;margin:0 0 4px" title="Data do pagamento"><br><input id="cpv_${c.id}" type="number" inputmode="decimal" step="any" value="${c.val}" style="width:110px;margin:0 4px 0 0" title="Valor pago (juros/desconto)"><button class="btn sm" style="margin:0" onclick="cpPagar('${c.id}')">✔ Pagar</button> <button class="btn sm sec" style="margin:0" onclick="cpExcluir('${c.id}')">🗑</button>`}</td></tr>`).join('')
+    :`<tr><td class="muted">${fl==='abertas'?'Nenhuma conta em aberto. 🎉':'Nada aqui ainda.'}</td></tr>`;
+  const se={};CT.filter(c=>c.serie&&c.tipo==='parc').forEach(c=>{(se[c.serie]=se[c.serie]||[]).push(c);});
+  const SL=Object.entries(se).map(([k,l])=>{l.sort((a,b)=>a.venc.localeCompare(b.venc));const pg=l.filter(c=>c.status==='paga'),ab2=l.filter(c=>c.status!=='paga');
+    return{k,c:l[0],n:l.length,pg:pg.length,pago:pg.reduce((t,c)=>t+(c.valPago||0),0),rest:ab2.reduce((t,c)=>t+c.val,0),prox:ab2[0]};}).sort((a,b)=>(b.rest>0)-(a.rest>0)||ord(a.c.desc,b.c.desc));
+  $('cpSeries').innerHTML=SL.length?'<tr><th>Financiamento</th><th class="n">Pagas</th><th class="n">Já pago</th><th class="n">Falta pagar</th><th></th></tr>'+SL.map(x=>`<tr><td><b>${esc(x.c.desc)}</b><br><span class="muted">${x.n}× ${fm(x.c.val)}${x.c.fornecedor?' · '+esc(x.c.fornecedor):''} · ${cpOndeTxt(x.c)}${x.prox?' · próxima '+fd(x.prox.venc):' · ✔ quitado'}</span></td>
+    <td class="n">${x.pg}/${x.n}</td><td class="n pos">${fm(x.pago)}</td><td class="n ${x.rest?'neg':''}">${fm(x.rest)}</td><td class="n">${x.rest?`<button class="btn sm sec" onclick="cpQuitar('${x.k}')">Quitar</button>`:''}</td></tr>`).join('')
+    :'<tr><td class="muted">Nenhum financiamento cadastrado. Use "Financiamento / parcelado" acima (ex.: trator em 10 parcelas anuais).</td></tr>';}
 
 </script>
 </body>
