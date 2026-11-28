@@ -241,6 +241,7 @@ tr.novo td{background:#fff6c9;transition:background 1s}
   <div class="card" id="aplAbrir" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
     <h2 style="margin:0">🚁 Aplicações</h2>
     <button class="btn" style="margin:0;font-size:17px;padding:13px 20px" onclick="abrirFormApl()">➕ Registrar nova aplicação</button>
+    <button class="btn" style="margin:0;font-size:17px;padding:13px 20px;background:#6b3fa0" onclick="abrirVoz()">🎤 Lançar por voz</button>
   </div>
   <div id="slotFormD" class="hide">
   <div class="card" id="aplForm">
@@ -1247,6 +1248,15 @@ function editarCli(id){const c=S.Cl[id];$('cId').value=id;$('cNome').value=c.nom
 function limparCli(){['cId','cNome','cFone','cCid','cDoc','cObs','cPreco'].forEach(i=>$(i).value='');$('cTit').textContent='Cadastrar cliente';$('cCanc').classList.add('hide');}
 function excluirCli(id){if((S.A||[]).some(a=>a.cliente===id)){toast('Este cliente tem aplicações. Não dá para excluir.');return;}if(!confirm(`Excluir ${S.Cl[id].nome}?`))return;
   const b=db.batch();b.delete(col('clientes').doc(id));if(S.CP[id])b.delete(col('clientesPreco').doc(id));gravar(b,'Cliente excluído');}
+// aplicação lançada no cliente errado: passa para outro cliente
+function trocarCliApl(id){const a=S.A.find(x=>x.id===id);if(!a)return;
+  $('mv_'+id).innerHTML=`<select onchange="moverApl('${id}',this.value)"><option value="">— passar para qual cliente? —</option>${Object.values(S.Cl).filter(c=>c.id!==a.cliente).sort((x,y)=>ord(x.nome,y.nome)).map(c=>`<option value="${c.id}">${esc(c.nome)}${c.cidade?' · '+esc(c.cidade):''}</option>`).join('')}</select> <button class="btn sm sec" onclick="renderCli()">✕</button>`;}
+function moverApl(id,cli){if(!cli)return;const a=S.A.find(x=>x.id===id);if(!a)return;if(a.faturada){toast('Esta aplicação já está numa cobrança. Exclua a cobrança antes.');return;}
+  if(!confirm(`Passar a aplicação de ${fq(a.ha)} ha (${fd(a.data)}) de ${a.clienteNome} para ${nomeCli(cli)}?`)){renderCli();return;}
+  const b=db.batch();b.set(col('aplicacoes').doc(id),{cliente:cli,clienteNome:nomeCli(cli)},{merge:true});
+  S.M.filter(m=>m.aplicacao===id).forEach(m=>b.set(col('movimentos').doc(m.id),{obs:'Aplicação · '+nomeCli(cli)},{merge:true}));
+  S.F.filter(f=>f.aplicacao===id&&f.auto).forEach(f=>b.set(col('financeiro').doc(f.id),{desc:String(f.desc||'').split(a.clienteNome).join(nomeCli(cli))},{merge:true}));
+  gravar(b,`↔ Aplicação passada para ${nomeCli(cli)} ✔`);}
 function verCli(id){cliAberto=cliAberto===id?'':id;renderCli();if(cliAberto)$('cDet').scrollIntoView({behavior:'smooth'});}
 function renderCli(){
   const b=$('cBusca').value.toLowerCase(),cl=Object.values(S.Cl).filter(c=>(c.nome+' '+(c.cidade||'')).toLowerCase().includes(b)).sort((a,b)=>ord(a.nome,b.nome));
@@ -1264,7 +1274,8 @@ function renderCli(){
   $('cDet').innerHTML=`<h2>👤 ${esc(c.nome)}</h2><p class="muted" style="margin-top:-6px">${esc(c.cidade||'')}${c.fone?' · 📞 '+esc(c.fone):''}${c.doc?' · '+esc(c.doc):''}${c.obs?'<br>📝 '+esc(c.obs):''}</p>
    <div class="kpis"><div class="kpi"><small>Área aplicada</small><b>${fq(+i.ha.toFixed(2))} ha</b><small>${i.n} aplicações</small></div><div class="kpi"><small>Total cobrado</small><b>${fm(tot)}</b></div>
    <div class="kpi"><small>Recebido</small><b class="pos">${fm(pg)}</b></div><div class="kpi"><small>Saldo a receber</small><b class="${i.venc?'neg':''}">${fm(i.aberto)}</b></div></div>
-   <h2>Aplicações</h2><div class="scroll"><table>${A.slice(0,40).map(a=>`<tr><td>${fd(a.data)}</td><td>${esc(a.local||'')} ${a.cult?'· '+esc(a.cult):''}<br><span class="muted" style="font-size:12px">${prodTxt(a)}</span></td><td class="n">${fq(a.ha)} ha</td><td>${a.faturada?'<span class="tag r">cobrada</span>':'<span class="tag g">a cobrar</span>'}</td></tr>`).join('')||'<tr><td class="muted">—</td></tr>'}</table></div>
+   <h2>Aplicações</h2><div class="scroll"><table>${A.slice(0,40).map(a=>`<tr><td>${fd(a.data)}</td><td>${esc(a.local||'')} ${a.cult?'· '+esc(a.cult):''}<br><span class="muted" style="font-size:12px">${prodTxt(a)}</span></td><td class="n">${fq(a.ha)} ha</td><td>${a.faturada?'<span class="tag r">cobrada</span>':'<span class="tag g">a cobrar</span>'}</td>
+     <td class="n" style="white-space:nowrap" id="mv_${a.id}">${a.faturada?'':`<button class="btn sm sec" title="Era de outro cliente" onclick="trocarCliApl('${a.id}')">↔ Outro cliente</button> <button class="btn sm sec" title="Excluir" onclick="excluirApl('${a.id}')">🗑</button>`}</td></tr>`).join('')||'<tr><td class="muted">—</td></tr>'}</table></div>
    <h2 style="margin-top:12px">Cobranças</h2><div class="scroll"><table>${R.map(r=>{const s=stRec(r);return `<tr><td>${fd(r.vencimento)}</td><td>${esc(r.desc)}</td><td class="n">${fm(r.valor)}</td><td class="${s.c}">${s.t}</td></tr>`;}).join('')||'<tr><td class="muted">—</td></tr>'}</table></div>`;}
 
 // ---------------- MAPA ----------------
@@ -1494,7 +1505,7 @@ async function notaEscolhida(ev){const f=ev.target.files[0];if(!f)return;
   try{const dados=await chamarIA(grande.split(',')[1]);NOTA.dados=dados;telaConferencia();}
   catch(e){console.error(e);$('notaCorpo').innerHTML=`<p class="bad">Não consegui ler a nota: ${esc(msgErroIA(e))}</p><p class="muted">Tente outra foto: nota inteira, reta, com boa luz e sem reflexo. Ou lance a despesa à mão.</p>`;}}
 function msgErroIA(e){const m=String(e&&e.message||e);if(/429|quota|RESOURCE_EXHAUSTED/i.test(m))return 'limite do plano gratuito da IA atingido por agora. Espere um pouco e tente de novo.';
-  if(/API.?key|permission|403|not enabled|SERVICE_DISABLED/i.test(m))return 'a IA não está ativada no Firebase (AI Logic > Gemini Developer API).';if(/JSON|Unexpected token/i.test(m))return 'a resposta veio incompleta.';return m.slice(0,160);}
+  if(/firebasevertexai|Firebase AI API|API.?key|permission|403|not enabled|SERVICE_DISABLED/i.test(m))return 'a IA ainda não foi ativada no Firebase. No console do Firebase abra "AI Logic", toque em "Começar" e escolha "Gemini Developer API" (grátis). Depois espere uns 5 minutos.';if(/JSON|Unexpected token/i.test(m))return 'a resposta veio incompleta.';return m.slice(0,160);}
 function promptNota(){const cad=itensOrd().map(p=>`${p.nome} (${p.tipo==='produto'?'produto':'peça'}, ${p.un||'un'})`).join('; ')||'nenhum';
   return `Você lê notas fiscais e cupons brasileiros (NF-e, NFC-e, DANFE, nota de balcão) para um prestador de serviço de aplicação com drone agrícola.
 Extraia os dados da imagem e responda SOMENTE com JSON válido, sem texto extra, neste formato:
@@ -1597,7 +1608,7 @@ async function verNotaId(id){try{const d=await col('notas').doc(id).get();if(d.e
 //  Fala um gasto ou um serviço feito; a IA entende, mostra o que entendeu e só grava depois de confirmar.
 // =====================================================================
 let VOZ={rec:null,partes:[],t0:0,tm:null,dados:null};
-function abrirVoz(){if(!LIC||!LIC.mod.ia){toast('O módulo de IA não está liberado. Fale com o fornecedor do sistema.');return;}$('vozModal').classList.remove('hide');vozInicio();}
+function abrirVoz(){if(!LIC||!LIC.mod.ia){toast('🎤 A voz usa o módulo de IA, que não está liberado nesta empresa. Libere "Leitura de notas (IA)" no painel do administrador.');return;}$('vozModal').classList.remove('hide');vozInicio();}
 function fecharVoz(){vozParar(true);$('vozModal').classList.add('hide');VOZ.dados=null;}
 function vozInicio(msg){const dono=S.papel==='dono';
   $('vozCorpo').innerHTML=(msg?`<p class="bad">${msg}</p>`:'')+`<p class="muted" style="font-size:14px">Fale como se fosse uma mensagem de áudio. Exemplos:<br>
