@@ -557,6 +557,11 @@ tr.novo td{background:#fff6c9;transition:background 1s}
   <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">📷 Nota fiscal</h2><button class="btn sm sec" style="margin:0" onclick="fecharNota()">✕ Fechar</button></div>
   <div id="notaCorpo"></div>
 </div></div>
+<button id="vozFab" class="hide" onclick="abrirVoz()" title="Falar com a IA" style="position:fixed;right:16px;bottom:70px;z-index:40;width:62px;height:62px;border-radius:50%;border:0;background:#6b3fa0;color:#fff;font-size:28px;box-shadow:0 4px 14px rgba(0,0,0,.3)">🎤</button>
+<div id="vozModal" class="modal hide"><div class="modalBox" style="max-width:560px">
+  <div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">🎤 Lançar por voz</h2><button class="btn sm sec" style="margin:0" onclick="fecharVoz()">✕ Fechar</button></div>
+  <div id="vozCorpo"></div>
+</div></div>
 <div id="notaVer" class="modal hide" onclick="this.classList.add('hide')"><div class="modalBox" style="text-align:center"><img id="notaImg" style="max-width:100%;border-radius:8px"><p class="muted">Toque para fechar</p></div></div>
 
 <div id="supModal" class="modal hide" onclick="if(event.target===this)fecharSup()"><div class="modalBox" style="max-width:520px">
@@ -954,7 +959,7 @@ function bip(){try{const a=new(window.AudioContext||window.webkitAudioContext)()
 // ---------------- MÓDULOS ----------------
 const TAB_MOD={fat:'financeiro',rec:'financeiro',fin:'financeiro',pag:'financeiro',est:'estoque',map:'mapa'};
 function aplicaModulos(){
-  document.querySelectorAll('.iaBtn').forEach(b=>b.classList.toggle('hide',!LIC.mod.ia));
+  document.querySelectorAll('.iaBtn').forEach(b=>b.classList.toggle('hide',!LIC.mod.ia));$('vozFab').classList.toggle('hide',!LIC.mod.ia);
   if(S.papel==='dono'){
     document.querySelectorAll('#nav button').forEach(b=>{const m=TAB_MOD[b.dataset.t];b.classList.toggle('hide',!!m&&!LIC.mod[m]);});
     const on=document.querySelector('#nav button.on');if(on&&on.classList.contains('hide'))aba('apl');}
@@ -1506,11 +1511,12 @@ async function iaModelo(nome){const [{initializeApp,getApps},{getAI,getGenerativ
     import(`https://www.gstatic.com/firebasejs/${IA_VERSAO_SDK}/firebase-app.js`),import(`https://www.gstatic.com/firebasejs/${IA_VERSAO_SDK}/firebase-ai.js`)]);
   const app=getApps().find(a=>a.name==='ia')||initializeApp(FIREBASE_CONFIG,'ia');
   return getGenerativeModel(getAI(app,{backend:new GoogleAIBackend()}),{model:nome,generationConfig:{responseMimeType:'application/json',temperature:0.1}});}
-async function chamarIA(b64){
-  if(window.IA_FAKE)return window.IA_FAKE();
+async function chamarIA(b64){return iaGerar([promptNota(),{inlineData:{data:b64,mimeType:'image/jpeg'}}],window.IA_FAKE);}
+async function iaGerar(partes,fake){
+  if(fake)return fake(partes);
   const modelos=(typeof GEMINI_MODELOS!=='undefined'&&GEMINI_MODELOS.length)?GEMINI_MODELOS:['gemini-2.5-flash-lite','gemini-2.5-flash'];let ult;
   for(const nome of (IA_MODEL?[IA_MODEL]:modelos)){
-    try{const m=await iaModelo(nome);const r=await m.generateContent([promptNota(),{inlineData:{data:b64,mimeType:'image/jpeg'}}]);
+    try{const m=await iaModelo(nome);const r=await m.generateContent(partes);
       let t=r.response.text().trim().replace(/^```(json)?/i,'').replace(/```$/,'').trim();const j=JSON.parse(t);IA_MODEL=nome;return j;}
     catch(e){ult=e;if(!/404|not found|not supported|is not available|unknown model/i.test(String(e&&e.message)))throw e;}}
   throw ult;}
@@ -1585,6 +1591,124 @@ function salvarNota(){notaCalc();const its=NOTA.itens,tot=num($('nTot').value)||
   gravar(b,`📷 Nota salva: despesa ${fm(tot)}${nEst?` e ${nEst} item(ns) no estoque`:''} ✔`);fecharNota();}
 async function verNota(src){if(!src)return;$('notaImg').src=src;$('notaVer').classList.remove('hide');}
 async function verNotaId(id){try{const d=await col('notas').doc(id).get();if(d.exists)verNota(d.data().img);else toast('Foto da nota não encontrada');}catch(e){toast('Não foi possível abrir a foto');}}
+
+// =====================================================================
+//  LANÇAR POR VOZ (áudio → Gemini → confirma → salva)
+//  Fala um gasto ou um serviço feito; a IA entende, mostra o que entendeu e só grava depois de confirmar.
+// =====================================================================
+let VOZ={rec:null,partes:[],t0:0,tm:null,dados:null};
+function abrirVoz(){if(!LIC||!LIC.mod.ia){toast('O módulo de IA não está liberado. Fale com o fornecedor do sistema.');return;}$('vozModal').classList.remove('hide');vozInicio();}
+function fecharVoz(){vozParar(true);$('vozModal').classList.add('hide');VOZ.dados=null;}
+function vozInicio(msg){const dono=S.papel==='dono';
+  $('vozCorpo').innerHTML=(msg?`<p class="bad">${msg}</p>`:'')+`<p class="muted" style="font-size:14px">Fale como se fosse uma mensagem de áudio. Exemplos:<br>
+    ${dono?'• <i>"Gastei 380 reais de diesel no gerador hoje"</i><br>':''}• <i>"Fiz 45 hectares no João da Silva, soja, 30 litros por hectare, glifosato 3 litros do meu estoque, 22 voos"</i>${dono?'<br>• <i>"Cobrei 80 o hectare, paguei 150 de ajudante"</i>':''}</p>
+   <button class="btn big" style="background:#6b3fa0;width:100%;font-size:20px;padding:18px" onclick="vozGravar()">🎙 Toque para gravar</button>
+   <label style="margin-top:14px">ou escreva</label><textarea id="vozTxt" rows="2" style="width:100%" placeholder="ex.: almoço da equipe 120 reais"></textarea>
+   <button class="btn sec" onclick="vozTexto()">Enviar texto</button>`;}
+async function vozGravar(){
+  if(!navigator.mediaDevices||!window.MediaRecorder){vozInicio('Este celular/navegador não grava áudio aqui. Use o campo de texto.');return;}
+  let st;try{st=await navigator.mediaDevices.getUserMedia({audio:true});}catch(e){vozInicio('Sem permissão para o microfone. Libere o microfone para este site nas configurações do navegador, ou escreva.');return;}
+  const mime=['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg'].find(m=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(m))||'';
+  const rec=new MediaRecorder(st,mime?{mimeType:mime}:{});VOZ.rec=rec;VOZ.partes=[];VOZ.cancel=false;
+  rec.ondataavailable=e=>{if(e.data&&e.data.size)VOZ.partes.push(e.data);};
+  rec.onstop=()=>{st.getTracks().forEach(t=>t.stop());clearInterval(VOZ.tm);if(VOZ.cancel)return;vozEnviarAudio(new Blob(VOZ.partes,{type:rec.mimeType||mime||'audio/webm'}));};
+  rec.start();VOZ.t0=Date.now();
+  $('vozCorpo').innerHTML=`<div style="text-align:center;padding:20px 0"><div style="font-size:54px">🔴</div><b id="vozSeg" style="font-size:22px">0:00</b><p class="muted">Gravando... fale agora</p>
+    <button class="btn big" style="width:100%;font-size:20px;padding:18px" onclick="vozParar()">⏹ Parar e enviar</button>
+    <button class="btn sec" onclick="vozParar(true);vozInicio()">Cancelar</button></div>`;
+  VOZ.tm=setInterval(()=>{const s=Math.floor((Date.now()-VOZ.t0)/1000);if($('vozSeg'))$('vozSeg').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');if(s>=120)vozParar();},500);}
+function vozParar(cancelar){if(VOZ.rec&&VOZ.rec.state!=='inactive'){VOZ.cancel=!!cancelar;VOZ.rec.stop();}clearInterval(VOZ.tm);}
+// converte para WAV 16 kHz mono (formato que o Gemini aceita em todo celular); se não der, manda como gravou
+async function paraWav(blob){try{const AC=window.AudioContext||window.webkitAudioContext,ac=new AC(),buf=await ac.decodeAudioData(await blob.arrayBuffer());ac.close&&ac.close();
+    const sr=16000,off=new OfflineAudioContext(1,Math.ceil(buf.duration*sr),sr),src=off.createBufferSource();src.buffer=buf;src.connect(off.destination);src.start();
+    const d=(await off.startRendering()).getChannelData(0),v=new DataView(new ArrayBuffer(44+d.length*2)),w=(o,t)=>[...t].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+    w(0,'RIFF');v.setUint32(4,36+d.length*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,d.length*2,true);
+    for(let i=0;i<d.length;i++){const x=Math.max(-1,Math.min(1,d[i]));v.setInt16(44+i*2,x<0?x*0x8000:x*0x7fff,true);}
+    return new Blob([v],{type:'audio/wav'});}catch(e){return blob;}}
+async function vozEnviarAudio(blob){if(blob.size<1500){vozInicio('Não captei nada. Tente de novo, segurando o celular perto da boca.');return;}
+  const wav=await paraWav(blob),b64=(await lerArquivo(wav)).split(',')[1],mt=(wav.type||'audio/webm').split(';')[0];
+  vozIA([vozPrompt(),{inlineData:{data:b64,mimeType:mt}}]);}
+function vozTexto(){const t=$('vozTxt').value.trim();if(!t){toast('Escreva o que foi feito ou gasto');return;}vozIA([vozPrompt(),'Mensagem do usuário: '+t]);}
+async function vozIA(partes){
+  if(navigator.onLine===false&&!window.VOZ_FAKE){vozInicio('📡 Sem internet. A IA precisa de sinal. Lance à mão ou tente quando conectar.');return;}
+  $('vozCorpo').innerHTML='<p style="padding:20px 0;text-align:center"><b>🤖 Entendendo...</b><br><span class="muted">Leva alguns segundos.</span></p>';
+  try{VOZ.dados=await iaGerar(partes,window.VOZ_FAKE);vozConfirma();}
+  catch(e){console.error(e);vozInicio('Não consegui entender: '+esc(msgErroIA(e)));}}
+function vozPrompt(){const dono=S.papel==='dono',L=(a,f)=>a.length?a.map(f).join('; '):'nenhum';
+  return `Você é o assistente de um prestador de serviço de aplicação com drone agrícola no Brasil. O usuário (${dono?'dono da empresa':'piloto'}) mandou um áudio ou texto contando ${dono?'um gasto e/ou ':''}um serviço feito.
+Hoje é ${hoje()}. Entenda datas como "hoje", "ontem", "segunda".
+Clientes cadastrados: ${L(Object.values(S.Cl),c=>c.nome+(c.cidade?' ('+c.cidade+')':''))}.
+Drones: ${L(Object.values(S.Dr),d=>d.nome)}.
+Produtos cadastrados: ${L(itensOrd('produto'),p=>p.nome+' ('+(p.un||'L')+')')}.
+Responda SOMENTE com JSON válido neste formato:
+{"ouvido":"o que a pessoa disse, resumido em uma frase","tipo":"servico|despesa|ambos|nao_entendi",
+"despesas":[{"valor":0,"grupo":"pecas|produtos|combustivel|pessoal|ajudante|viagem|impostos|financ|outros","descricao":"curta","data":"AAAA-MM-DD","drone":""}],
+"servico":{"cliente":"nome como falado","cliente_cadastrado":"","local":"","cultura":"","ha":0,"vazao":0,"voos":0,"km":0,"data":"AAAA-MM-DD","drone":"",
+ "preco_ha":0,"valor_cobrado":0,"combustivel":0,"funcionario":0,"ajudante":0,"outros":0,"outros_desc":"","obs":"",
+ "produtos":[{"nome":"","item_cadastrado":"","dose":0,"un":"L|kg|mL|g","origem":"cliente|meu"}]}}
+Regras:
+- "servico" = aplicação feita (hectares num cliente). Se não houver serviço, use "servico":null. Se não houver gasto avulso, "despesas":[].
+- Gastos ligados ao serviço falado junto (combustível do gerador, diária do piloto, ajudante, almoço daquele serviço) vão nos campos do servico (combustivel, funcionario, ajudante, outros), não em despesas.
+- cliente_cadastrado / item_cadastrado / drone: o nome EXATO da lista acima se for o mesmo (aceite apelido, sobrenome ou erro de pronúncia); senão "".
+- dose é POR HECTARE. Se falar o total do produto, divida pela área. origem "meu" só se disser que é do próprio estoque ("meu", "nosso", "eu levei"); senão "cliente".
+- vazao = litros de calda por hectare. km = deslocamento ida e volta.
+- Valores em reais, números com ponto decimal. Se não foi dito, 0 ou "". Não invente.`;}
+const nrmV=s=>nrmTxt(s).replace(/\b(sr|sra|seu|dona|do|da|de|dos)\b/g,' ').replace(/\s+/g,' ').trim();
+function vozAcharCli(sv){const tenta=[sv.cliente_cadastrado,sv.cliente].map(nrmV).filter(Boolean),cl=Object.values(S.Cl);
+  for(const t of tenta){const c=cl.find(c=>nrmV(c.nome)===t)||cl.find(c=>nrmV(c.nome).includes(t)||t.includes(nrmV(c.nome)));if(c)return c.id;}return'';}
+function vozAcharDrone(n){const d=Object.values(S.Dr);if(d.length===1)return d[0].id;const t=nrmTxt(n);if(!t)return'';const x=d.find(x=>nrmTxt(x.nome)===t)||d.find(x=>nrmTxt(x.nome).includes(t)||t.includes(nrmTxt(x.nome)));return x?x.id:'';}
+function vozAcharProd(pr){const alvo=nrmTxt(pr.item_cadastrado||''),ps=itensOrd('produto');let p=alvo&&ps.find(x=>nrmTxt(x.nome)===alvo);if(p)return p.id;
+  const n=' '+nrmTxt(pr.nome)+' ';p=ps.find(x=>{const w=nrmTxt(x.nome).split(' ').find(t=>t.length>=4);return w&&n.includes(' '+w+' ');});return p?p.id:'';}
+const dataOk=d=>/^\d{4}-\d{2}-\d{2}$/.test(d||'')?d:hoje();
+function vozConfirma(){const d=VOZ.dados||{},dono=S.papel==='dono';
+  const des=dono?(d.despesas||[]).filter(x=>num(x.valor)>0):[],sv=d.servico&&num(d.servico.ha)>0?d.servico:null;
+  VOZ.des=des.map(x=>({...x,grupo:GD[x.grupo]?x.grupo:'outros',data:dataOk(x.data),drone:vozAcharDrone(x.drone)}));
+  if(!des.length&&!sv){vozInicio(`🤔 Não entendi um ${dono?'gasto ou ':''}serviço${d.ouvido?` em: <i>"${esc(d.ouvido)}"</i>`:''}.${!dono&&(d.despesas||[]).length?' Gastos avulsos só o dono lança.':''} Tente de novo falando o valor ou os hectares.`);return;}
+  const dr=Object.values(S.Dr).sort((a,b)=>ord(a.nome,b.nome)),opDr=v=>'<option value="">—</option>'+dr.map(x=>`<option value="${x.id}"${x.id===v?' selected':''}>${esc(x.nome)}</option>`).join('');
+  let h=d.ouvido?`<p class="muted" style="font-size:14px">🗣 <i>"${esc(d.ouvido)}"</i></p>`:'';
+  VOZ.des.forEach((x,k)=>{h+=`<div style="border:1px solid #dde3ea;border-radius:10px;padding:10px;margin:8px 0"><b>💸 Despesa</b>
+    <div class="row"><div><label>Valor (R$)</label><input id="vzV${k}" type="number" step="any" value="${num(x.valor)}"></div><div><label>Data</label><input id="vzD${k}" type="date" value="${x.data}"></div></div>
+    <div class="row"><div style="flex:2"><label>Descrição</label><input id="vzT${k}" value="${esc(x.descricao||'')}"></div></div>
+    <div class="row"><div><label>Tipo</label><select id="vzG${k}">${Object.entries(GD).map(([g,n])=>`<option value="${g}"${g===x.grupo?' selected':''}>${n}</option>`).join('')}</select></div><div><label>Drone</label><select id="vzR${k}">${opDr(x.drone)}</select></div></div></div>`;});
+  if(sv){const cid=vozAcharCli(sv),prods=(sv.produtos||[]).filter(p=>p.nome);VOZ.sv={...sv,cid,droneId:vozAcharDrone(sv.drone),data:dataOk(sv.data),prods:prods.map(p=>({...p,pid:vozAcharProd(p)}))};const v=VOZ.sv;
+    const li=(a,b)=>b?`<tr><td class="muted">${a}</td><td><b>${b}</b></td></tr>`:'';
+    h+=`<div style="border:1px solid #dde3ea;border-radius:10px;padding:10px;margin:8px 0"><b>🚁 Serviço</b><table style="width:100%;font-size:14px">
+      ${li('Cliente',cid?esc(nomeCli(cid)):`${esc(sv.cliente||'?')} <span class="wait">(cliente novo, vai ser cadastrado)</span>`)}
+      ${li('Data',fd(v.data))}${li('Área',fq(num(sv.ha))+' ha')}${li('Local',esc(sv.local||''))}${li('Cultura',esc(sv.cultura||''))}
+      ${li('Vazão',num(sv.vazao)?fq(num(sv.vazao))+' L/ha':'')}${li('Voos',num(sv.voos)?fq(num(sv.voos)):'')}${li('Deslocamento',num(sv.km)?fq(num(sv.km))+' km':'')}
+      ${li('Drone',v.droneId?esc(nomeDr(v.droneId)):(sv.drone?esc(sv.drone)+' <span class="wait">(não achei)</span>':''))}
+      ${li('Produtos',v.prods.map(p=>`${esc(p.pid?S.C[p.pid].nome:p.nome)} ${fq(num(p.dose))} ${esc(p.un||'L')}/ha · ${p.origem==='meu'&&p.pid?'📦 meu estoque':'do cliente'}${p.origem==='meu'&&!p.pid?' <span class="wait">(não está no estoque)</span>':''}`).join('<br>'))}
+      ${dono?li('Preço/ha',num(sv.preco_ha)?fm(num(sv.preco_ha)):'')+li('Valor cobrado',num(sv.valor_cobrado)?fm(num(sv.valor_cobrado)):'')+li('Combustível',num(sv.combustivel)?fm(num(sv.combustivel)):'')+li('Piloto',num(sv.funcionario)?fm(num(sv.funcionario)):'')+li('Ajudante',num(sv.ajudante)?fm(num(sv.ajudante)):'')+li('Outros',num(sv.outros)?fm(num(sv.outros))+(sv.outros_desc?' ('+esc(sv.outros_desc)+')':''):''):''}
+      ${li('Obs',esc(sv.obs||''))}</table>
+      ${!cid&&!sv.cliente?'<p class="bad">Não entendi o cliente. Use "Corrigir no formulário".</p>':''}</div>`;}
+  h+=`<button class="btn big" style="width:100%" onclick="vozSalvar()">✅ Confirmar e salvar</button>
+    ${sv?'<button class="btn sec" style="width:100%" onclick="vozSalvar(true)">✏ Corrigir no formulário</button>':''}
+    <button class="btn sec" style="width:100%" onclick="vozInicio()">🎙 Gravar de novo</button>`;
+  $('vozCorpo').innerHTML=h;}
+function vozPreencher(){const v=VOZ.sv,dono=S.papel==='dono';if(!v)return true;
+  let cid=v.cid;if(!cid){if(!v.cliente){return false;}const b=db.batch(),r=col('clientes').doc();cid=r.id;b.set(r,{nome:v.cliente.trim(),fone:'',cidade:'',criadoEm:Date.now(),quem:S.uid});S.Cl[cid]={id:cid,nome:v.cliente.trim()};gravar(b,'👤 Cliente cadastrado: '+v.cliente);}
+  if(dono){aba('apl');abrirFormApl();}else document.querySelector('#navP [data-p=pApl]').click();
+  renderFormOpcoes();$('fCli').value=cid;$('fCli').dispatchEvent(new Event('change',{bubbles:true}));
+  const set=(i,x)=>{if($(i))$(i).value=x||'';};
+  set('fData',v.data);set('fLocal',v.local);set('fCult',v.cultura);set('fHa',num(v.ha)||'');set('fVazao',num(v.vazao)||'');set('fVoos',num(v.voos)||'');set('fKm',num(v.km)||'');set('fObs',v.obs);
+  if(v.droneId)$('fDrone').value=v.droneId;
+  if(v.prods.length){$('fProds').innerHTML='';v.prods.forEach(p=>{fAddProd();const r=$('fProds').lastElementChild,sel=r.querySelector('.ps');
+    sel.value=p.pid||'_outro';fProdMudou(sel);if(!p.pid)r.querySelector('.pn').value=p.nome;r.querySelector('.pd').value=num(p.dose)||'';
+    const u=r.querySelector('.pu');if(p.un&&[...u.options].some(o=>o.value===p.un))u.value=p.un;const o=r.querySelector('.po');if(p.pid&&p.origem==='meu'&&[...o.options].some(x=>x.value==='meu'))o.value='meu';});}
+  if(dono){if(num(v.preco_ha)){$('vPreco').value=num(v.preco_ha);vPrecoMexido=true;}set('vComb',num(v.combustivel)||'');set('vFunc',num(v.funcionario)||'');set('vAjud',num(v.ajudante)||'');set('vOut',num(v.outros)||'');set('vOutDesc',v.outros_desc);
+    if(num(v.valor_cobrado)){$('vTotal').value=num(v.valor_cobrado);vManual=true;}else vManual=false;}
+  fTotais();return true;}
+function vozSalvar(corrigir){
+  if(VOZ.des.length){const b=db.batch();let tot=0;
+    for(let k=0;k<VOZ.des.length;k++){const val=num($('vzV'+k).value);if(val<=0){toast('Valor da despesa inválido');return;}tot+=val;
+      b.set(col('financeiro').doc(),{tipo:'D',grupo:$('vzG'+k).value,desc:$('vzT'+k).value.trim()||'Despesa (voz)',val,data:$('vzD'+k).value||hoje(),drone:$('vzR'+k).value,voz:true,criadoEm:Date.now()});}
+    gravar(b,`🎤 Despesa salva: ${fm(tot)} ✔`);}
+  if(VOZ.sv){if(!vozPreencher()){toast('Diga ou escolha o cliente no formulário');corrigir=true;}
+    $('vozModal').classList.add('hide');
+    if(corrigir){toast('✏ Confira o formulário e toque em Salvar');$('aplForm').scrollIntoView({behavior:'smooth',block:'start'});return;}
+    salvarAplicacao();}
+  else $('vozModal').classList.add('hide');
+  VOZ.dados=null;}
 
 // ================= CONTAS A PAGAR (conta única, todo mês, financiamento/parcelado) =================
 // Cada parcela é um documento em "contas". Ao pagar, vira uma despesa normal no financeiro (entra no custo por talhão/hectare se foi escolhido).
