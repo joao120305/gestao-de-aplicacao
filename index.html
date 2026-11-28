@@ -200,18 +200,19 @@ tr.novo td{background:#fff6c9;transition:background 1s}
     <div class="card">
       <h2>🔧 Usei / troquei peça</h2>
       <div class="row">
-        <div style="flex:2"><label>Peça</label><select id="ppItem"></select></div>
+        <div style="flex:2"><label>Peça</label><select id="ppItem" onchange="ppPrevia()"></select></div>
         <div><label>Quantidade</label><input id="ppQtd" type="number" inputmode="decimal" step="any" min="0"></div>
       </div>
       <div class="row">
-        <div><label>Drone</label><select id="ppDrone" class="selDrone" onchange="opServicos('ppServ',this.value)"></select></div>
+        <div><label>Drone</label><select id="ppDrone" class="selDrone" onchange="opServicos('ppServ',this.value);ppPrevia()"></select></div>
         <div><label>Motivo</label><select id="ppMot"><option>Troca por desgaste</option><option>Quebra</option><option>Manutenção</option><option>Outro</option></select></div>
       </div>
       <div class="row">
         <div style="flex:2"><label>Em qual serviço (aplicação) foi a troca</label><select id="ppServ"></select></div>
-        <div><label>Posição (opcional)</label><input id="ppPos" list="posicoes" placeholder="ex.: braço 3"></div>
+        <div><label>Posição (opcional)</label><input id="ppPos" list="posicoes" placeholder="ex.: braço 3" oninput="ppPrevia()"></div>
       </div>
       <datalist id="posicoes"><option>Braço 1<option>Braço 2<option>Braço 3<option>Braço 4<option>Braço 5<option>Braço 6<option>Braço 7<option>Braço 8<option>Bomba<option>Bico esquerdo<option>Bico direito</datalist>
+      <div id="ppPrev" style="margin:8px 0;font-size:14px"></div>
       <button class="btn" onclick="pilBaixaPeca()">Registrar</button>
     </div>
     <div class="card"><h2>Peças e produtos no estoque</h2><input id="ppBusca" placeholder="🔍 Buscar..." oninput="renderPilPecas()"><div class="scroll" style="margin-top:8px"><table id="ppLista"></table></div></div>
@@ -386,12 +387,12 @@ tr.novo td{background:#fff6c9;transition:background 1s}
     </div>
     <div class="hide" id="eBxBox">
       <div class="row">
-        <div><label>Drone</label><select id="eDrone" class="selDrone" onchange="opServicos('eServ',this.value)"></select></div>
-        <div><label>Motivo</label><select id="eMot"><option>Troca por desgaste</option><option>Quebra</option><option>Manutenção</option><option>Venda</option><option>Outro</option></select></div>
+        <div><label>Drone</label><select id="eDrone" class="selDrone" onchange="opServicos('eServ',this.value);ePrevia()"></select></div>
+        <div><label>Motivo</label><select id="eMot" onchange="ePrevia()"><option>Troca por desgaste</option><option>Quebra</option><option>Manutenção</option><option>Venda</option><option>Outro</option></select></div>
       </div>
       <div class="row">
         <div style="flex:2"><label>Em qual serviço (aplicação) foi a troca</label><select id="eServ"></select></div>
-        <div><label>Posição (opcional)</label><input id="ePos" list="posicoes" placeholder="ex.: braço 3"></div>
+        <div><label>Posição (opcional)</label><input id="ePos" list="posicoes" placeholder="ex.: braço 3" oninput="ePrevia()"></div>
       </div>
     </div>
     <div class="row"><div><label>Data</label><input id="eData" type="date"></div><div style="flex:2"><label>Observação</label><input id="eObs"></div></div>
@@ -942,11 +943,11 @@ const tels=s=>String(s||'').replace(/\D/g,'');
 function keepSel(id,html){const e=$(id);if(!e)return;const v=e.value;e.innerHTML=html;if([...e.options].some(o=>o.value===v))e.value=v;}
 function itensOrd(tipo){return Object.values(S.C).filter(p=>!tipo||p.tipo===tipo).sort((a,b)=>ord(a.nome,b.nome));}
 function saldo(pid){return S.M.reduce((s,m)=>m.pid===pid?s+(m.tipo==='E'?m.qtd:-m.qtd):s,0);}
-let K={avg:{}};
-function calcCustos(){const avg={},s={};
+let K={avg:{},mov:{},pe:{apl:{},taxa:{},drone:{}}};
+function calcCustos(){const avg={},s={},mov={};
   [...S.M].sort((a,b)=>a.data.localeCompare(b.data)||(a.criadoEm||0)-(b.criadoEm||0)).forEach(m=>{const p=m.pid;s[p]=s[p]||0;avg[p]=avg[p]||0;
-    if(m.tipo==='E'){const pr=S.P[m.id]?S.P[m.id].val:0;if(pr>0)avg[p]=s[p]>0?(s[p]*avg[p]+m.qtd*pr)/(s[p]+m.qtd):pr;s[p]+=m.qtd;}else s[p]-=m.qtd;});
-  K={avg};}
+    if(m.tipo==='E'){const pr=S.P[m.id]?S.P[m.id].val:0;if(pr>0)avg[p]=s[p]>0?(s[p]*avg[p]+m.qtd*pr)/(s[p]+m.qtd):pr;s[p]+=m.qtd;}else{mov[m.id]=avg[p];s[p]-=m.qtd;}});
+  K={avg,mov};K.pe=desgaste();}
 function linkMapa(a){return a.lat!=null&&a.lng!=null?`https://www.google.com/maps?q=${a.lat},${a.lng}`:'';}
 function bip(){try{const a=new(window.AudioContext||window.webkitAudioContext)();const o=a.createOscillator();o.frequency.value=880;o.connect(a.destination);o.start();o.stop(a.currentTime+.15);setTimeout(()=>a.close(),400);}catch(e){}}
 
@@ -1014,10 +1015,10 @@ function vCalc(fromTotal){if(S.papel!=='dono')return;
   const ha=num($('fHa').value),preco=num($('vPreco').value),des=$('vDesChk').checked?num($('vDes').value):0,km=num($('fKm').value),comb=num($('vComb').value),func=num($('vFunc').value),ajud=num($('vAjud').value),outr=num($('vOut').value);
   const pi=vProdItens(),pv=pi.reduce((s,p)=>s+p.total,0),pc=pi.reduce((s,p)=>s+p.custo,0),serv=+(ha*preco).toFixed(2),auto=+(serv+des+pv).toFixed(2);
   if(!vManual&&!fromTotal)$('vTotal').value=auto||'';
-  const tot=num($('vTotal').value),ckm=+(km*kmCusto()).toFixed(2),luc=tot-comb-func-ajud-outr-pc-ckm;
+  const tot=num($('vTotal').value),ckm=+(km*kmCusto()).toFixed(2),pe=+(ha*((K.pe&&K.pe.drone[$('fDrone').value])||0)).toFixed(2),luc=tot-comb-func-ajud-outr-pc-ckm-pe;
   $('vResumo').innerHTML=(ha&&preco?`Serviço ${fq(ha)} ha × ${fm(preco)} = ${fm(serv)}`:'')+(des?` + deslocamento ${fm(des)}`:'')+(pv?` + produtos ${fm(pv)}`:'')+
     (vManual&&tot!==auto?` <span style="color:#9a6a00">(valor ajustado à mão${auto?`, calculado seria ${fm(auto)}`:''})</span>`:'')+
-    (tot?`<br>Custos: combustível ${fm(comb)}${func?` · funcionário ${fm(func)}`:''}${ajud?` · ajudante ${fm(ajud)}`:''}${outr?` · outros ${fm(outr)}${$('vOutDesc').value.trim()?' ('+esc($('vOutDesc').value.trim())+')':''}`:''}${km?` · deslocamento ${fq(km)} km${kmCusto()?' × '+fm(kmCusto())+' = '+fm(ckm):' (defina o custo por km no Financeiro)'}`:''}${pc?` · produtos (custo) ${fm(pc)}`:''} · <b class="${luc>=0?'pos':'neg'}">lucro estimado ${fm(luc)}</b>`:'');}
+    (tot?`<br>Custos: combustível ${fm(comb)}${func?` · funcionário ${fm(func)}`:''}${ajud?` · ajudante ${fm(ajud)}`:''}${outr?` · outros ${fm(outr)}${$('vOutDesc').value.trim()?' ('+esc($('vOutDesc').value.trim())+')':''}`:''}${km?` · deslocamento ${fq(km)} km${kmCusto()?' × '+fm(kmCusto())+' = '+fm(ckm):' (defina o custo por km no Financeiro)'}`:''}${pc?` · produtos (custo) ${fm(pc)}`:''}${pe?` · 🔧 desgaste de peças ${fm(pe)}`:''} · <b class="${luc>=0?'pos':'neg'}">lucro estimado ${fm(luc)}</b>`:'');}
 function renderFormOpcoes(){
   const cl=Object.values(S.Cl).sort((a,b)=>ord(a.nome,b.nome));
   keepSel('fCli','<option value="">— escolha o cliente —</option>'+cl.map(c=>`<option value="${c.id}">${esc(c.nome)}${c.cidade?' · '+esc(c.cidade):''}</option>`).join(''));
@@ -1029,7 +1030,8 @@ function renderFormOpcoes(){
   document.querySelectorAll('#fProds .pr select.ps').forEach(sel=>{if(document.activeElement===sel)return;const v=sel.value;sel.innerHTML=opProdutos();if([...sel.options].some(o=>o.value===v))sel.value=v;});}
 function opProdutos(){return '<option value="">— produto —</option>'+itensOrd('produto').map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join('')+'<option value="_outro">Outro (digitar)…</option>';}
 document.addEventListener('change',e=>{if(e.target&&e.target.id==='fCli'&&S.papel==='dono'){const p=S.CP[e.target.value];if(p&&p.precoHa&&!vPrecoMexido)$('vPreco').value=p.precoHa;vCalc();}
-  if(e.target&&e.target.id==='vPreco')vPrecoMexido=true;});
+  if(e.target&&e.target.id==='vPreco')vPrecoMexido=true;
+  if(e.target&&e.target.id==='fDrone'&&S.papel==='dono')vCalc();});
 function fAddProd(){const d=document.createElement('div');d.className='pr';
   d.innerHTML=`<select class="ps" onchange="fProdMudou(this)">${opProdutos()}</select><input class="pn hide" placeholder="Nome do produto">
   <input class="pd" type="number" inputmode="decimal" step="any" min="0" placeholder="Dose/ha" oninput="fTotais()">
@@ -1132,8 +1134,8 @@ function renderApl(){
     <td><b>${esc(a.clienteNome||nomeCli(a.cliente))}</b><br><span class="muted">${esc(a.local||'')}${a.cult?' · '+esc(a.cult):''}${a.pilotoNome?' · 👤 '+esc(a.pilotoNome):''}${a.droneNome?' · 🚁 '+esc(a.droneNome):''}</span></td>
     <td class="n"><b>${fq(a.ha)} ha</b>${a.vazao?`<br><span class="muted">${fq(a.vazao)} L/ha</span>`:''}</td>
     <td style="font-size:13px">${prodTxt(a)||'<span class="muted">—</span>'}${a.km?`<br><span class="muted">🚗 ${fq(a.km)} km</span>`:''}</td>
-    <td class="n">${(()=>{const v=valorApl(a);if(!v||!v.valor)return v&&v.comb?`<span class="muted">custos ${fm(v.comb)}</span>`:'<span class="muted">—</span>';const ckm=(a.km||0)*kmCusto(),luc=v.valor-v.comb-ckm-v.pc,cu=v.cu;
-      return `<b>${fm(v.valor)}</b>${v.fonte==='cob'?'<br><span class="muted" style="font-size:11px">da cobrança</span>':''}${v.desloc?`<br><span class="muted">desloc. ${fm(v.desloc)}</span>`:''}${cu.comb?`<br><span class="muted">comb. ${fm(cu.comb)}</span>`:''}${cu.pes?`<br><span class="muted">equipe ${fm(cu.pes)}</span>`:''}${cu.out?`<br><span class="muted">outros ${fm(cu.out)}</span>`:''}<br><span class="${luc>=0?'pos':'neg'}" style="font-size:12px">lucro ${fm(luc)}</span>`;})()}</td>
+    <td class="n">${(()=>{const v=valorApl(a);if(!v||!v.valor)return v&&v.comb?`<span class="muted">custos ${fm(v.comb)}</span>`:'<span class="muted">—</span>';const ckm=(a.km||0)*kmCusto(),pe=peApl(a.id),luc=v.valor-v.comb-ckm-v.pc-pe,cu=v.cu;
+      return `<b>${fm(v.valor)}</b>${v.fonte==='cob'?'<br><span class="muted" style="font-size:11px">da cobrança</span>':''}${v.desloc?`<br><span class="muted">desloc. ${fm(v.desloc)}</span>`:''}${cu.comb?`<br><span class="muted">comb. ${fm(cu.comb)}</span>`:''}${cu.pes?`<br><span class="muted">equipe ${fm(cu.pes)}</span>`:''}${cu.out?`<br><span class="muted">outros ${fm(cu.out)}</span>`:''}${pe?`<br><span class="muted">🔧 peças ${fm(pe)}</span>`:''}<br><span class="${luc>=0?'pos':'neg'}" style="font-size:12px">lucro ${fm(luc)}</span>`;})()}</td>
     <td class="n" style="white-space:nowrap"><button class="btn sm sec" title="Valores" onclick="editarValores('${a.id}')">💰</button> ${a.faturada?'<span class="tag r">cobrada</span>':'<span class="tag g">a cobrar</span>'}<br>${linkMapa(a)?`<a class="btn sm sec" style="display:inline-block;margin-top:4px;text-decoration:none" href="${linkMapa(a)}" target="_blank">📍</a> `:''}<button class="btn sm sec" style="margin-top:4px" onclick="excluirApl('${a.id}')">🗑</button></td></tr>`).join(''):'<tr><td class="muted">Nenhuma aplicação.</td></tr>';
   const grp=(k,n)=>{const o={};l.forEach(a=>{const x=a[n]||a[k]||'(sem)';o[x]=o[x]||{ha:0,q:0,v:0};o[x].ha+=a.ha;o[x].q++;o[x].v+=a.voos||0;});return Object.entries(o).sort((a,b)=>b[1].ha-a[1].ha);};
   const pp=grp('piloto','pilotoNome');$('aPorPil').innerHTML=pp.length?'<tr><th>Piloto</th><th class="n">ha</th><th class="n">Aplic.</th></tr>'+pp.map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${fq(+v.ha.toFixed(2))}</td><td class="n">${v.q}</td></tr>`).join(''):'<tr><td class="muted">—</td></tr>';
@@ -1287,7 +1289,8 @@ function opServicos(selId,drone){const e=$(selId);if(!e)return;const v=e.value,l
 let etipo='E';
 function setETipo(t){etipo=t;$('eEnt').classList.toggle('on',t==='E');$('eBx').classList.toggle('on',t==='B');$('eEntBox').classList.toggle('hide',t!=='E');$('eBxBox').classList.toggle('hide',t!=='B');$('eFinBox').classList.toggle('hide',t!=='E');ePrevia();}
 function ePrevia(){const p=S.C[$('eItem').value],q=num($('eQtd').value),v=num($('eVal').value);
-  $('ePrev').innerHTML=p?`Saldo atual: <b>${fq(saldo(p.id))} ${esc(p.un||'')}</b>`+(etipo==='E'&&q&&v?` · ${fm(v/q)} por ${esc(p.un||'un')}${K.avg[p.id]?` (custo médio atual ${fm(K.avg[p.id])})`:''}`:''):'';}
+  $('ePrev').innerHTML=p?`Saldo atual: <b>${fq(saldo(p.id))} ${esc(p.un||'')}</b>`+(etipo==='E'&&q&&v?` · ${fm(v/q)} por ${esc(p.un||'un')}${K.avg[p.id]?` (custo médio atual ${fm(K.avg[p.id])})`:''}`:'')+
+    (etipo==='B'&&$('eMot').value!=='Venda'?(x=>x?'<div style="margin-top:6px;padding:8px;border-radius:8px;background:#f3f7ee;color:#222">'+x+'</div>':'')(prevTroca($('eDrone').value,p.id,$('ePos').value)):''):'';}
 function salvarMovEst(){const p=S.C[$('eItem').value],q=num($('eQtd').value);if(!p){toast('Escolha o item');return;}if(q<=0){toast('Informe a quantidade');return;}
   if(etipo==='B'&&q>saldo(p.id)+1e-9&&!confirm(`A saída (${fq(q)}) é maior que o saldo (${fq(saldo(p.id))}). Salvar mesmo assim?`))return;
   const b=db.batch(),ref=col('movimentos').doc(),data=$('eData').value||hoje(),v=num($('eVal').value),forn=$('eForn').value.trim();
@@ -1296,7 +1299,8 @@ function salvarMovEst(){const p=S.C[$('eItem').value],q=num($('eQtd').value);if(
     if(v>0&&$('eFin').checked)b.set(col('financeiro').doc(),{tipo:'D',grupo:p.tipo==='produto'?'produtos':'pecas',desc:`Compra: ${p.nome} (${fq(q)} ${p.un||''})${forn?' · '+forn:''}`,val:v,data,mid:ref.id,criadoEm:Date.now()});}
   else{m.drone=$('eDrone').value;m.motivo=$('eMot').value;m.servico=$('eServ').value;m.pos=$('ePos').value.trim();
     if(p.tipo==='peca'&&!m.drone&&m.motivo!=='Venda'&&!confirm('Sem escolher o drone, essa troca não entra no cálculo de vida útil. Salvar mesmo assim?'))return;}
-  b.set(ref,m);gravar(b,(etipo==='E'?'⬇ Entrada':'⬆ Saída')+` de ${fq(q)} ${p.un||''} ${p.nome} ✔`);['eQtd','eVal','eObs','ePos'].forEach(i=>$(i).value='');ePrevia();}
+  const dur=etipo==='B'&&p.tipo==='peca'&&m.drone&&m.motivo!=='Venda'?durTxt(m.drone,p.id,m.pos):'';
+  b.set(ref,m);gravar(b,(etipo==='E'?'⬇ Entrada':'⬆ Saída')+` de ${fq(q)} ${p.un||''} ${p.nome} ✔${dur}`);['eQtd','eVal','eObs','ePos'].forEach(i=>$(i).value='');ePrevia();}
 function salvarItem(){const nome=$('iNome').value.trim();if(!nome){toast('Informe o nome');return;}const id=$('iId').value,tipo=$('iTipo').value;
   if(!id&&Object.values(S.C).some(p=>p.nome.toLowerCase()===nome.toLowerCase())){toast('Já existe um item com esse nome');return;}
   const b=db.batch(),ref=id?col('catalogo').doc(id):col('catalogo').doc();
@@ -1326,7 +1330,7 @@ function renderEst(){
     <td class="n" style="white-space:nowrap"><button class="btn sm" onclick="movRapido('${p.id}','E')">⬇</button> <button class="btn sm" style="background:#b5562b" onclick="movRapido('${p.id}','B')">⬆</button> <button class="btn sm sec" onclick="editarItem('${p.id}')">✎</button> <button class="btn sm sec" onclick="excluirItem('${p.id}')">🗑</button></td></tr>`;}).join(''):'<tr><td class="muted">Nenhum item cadastrado.</td></tr>';
   const dr=Object.values(S.Dr).sort((a,b)=>ord(a.nome,b.nome));
   $('dLista').innerHTML=dr.length?dr.map(d=>{const ha=(S.A||[]).filter(a=>a.drone===d.id).reduce((s,a)=>s+a.ha,0),pecas=S.M.filter(m=>m.tipo==='B'&&m.drone===d.id&&!m.aplicacao).length;
-    return `<tr><td><b>${esc(d.nome)}</b><br><span class="muted">${d.serie?'série '+esc(d.serie)+' · ':''}${fq(+ha.toFixed(1))} ha aplicados · ${pecas} troca(s) de peça</span></td><td class="n"><button class="btn sm sec" onclick="excluirDrone('${d.id}')">🗑</button></td></tr>`;}).join(''):'<tr><td class="muted">Nenhum drone cadastrado.</td></tr>';
+    return `<tr><td><b>${esc(d.nome)}</b><br><span class="muted">${d.serie?'série '+esc(d.serie)+' · ':''}${fq(+ha.toFixed(1))} ha aplicados · ${pecas} troca(s) de peça${K.pe.drone[d.id]?' · peças hoje '+fm(K.pe.drone[d.id])+'/ha':''}</span></td><td class="n"><button class="btn sm sec" onclick="excluirDrone('${d.id}')">🗑</button></td></tr>`;}).join(''):'<tr><td class="muted">Nenhum drone cadastrado.</td></tr>';
   const h=[...S.M].sort((a,b)=>b.data.localeCompare(a.data)||(b.criadoEm||0)-(a.criadoEm||0)).slice(0,40);
   $('eHist').innerHTML=h.length?h.map(m=>{const p=S.C[m.pid]||{nome:'(excluído)'};return `<tr><td>${fd(m.data)}</td><td>${esc(p.nome)} <span class="tag ${m.tipo==='E'?'e':'b'}">${m.tipo==='E'?'entrada':'saída'}</span><br><span class="muted">${esc(m.nomeQuem||'')}${m.drone?' · 🚁 '+esc(nomeDr(m.drone)):''}${m.motivo?' · '+esc(m.motivo):''}${m.obs?' · '+esc(m.obs):''}</span></td><td class="n">${m.tipo==='E'?'+':'−'}${fq(m.qtd)} ${esc(p.un||'')}</td></tr>`;}).join(''):'<tr><td class="muted">—</td></tr>';
   opServicos('eServ',$('eDrone').value);ePrevia();renderVida();}
@@ -1338,12 +1342,41 @@ function trocas(){return S.M.filter(m=>m.tipo==='B'&&m.drone&&!m.aplicacao&&m.mo
   .sort((a,b)=>a.data.localeCompare(b.data)||(a.criadoEm||0)-(b.criadoEm||0));}
 function usoDrone(drone,de,ate,servDe,servAte){ // aplicações do drone entre duas trocas
   const L=(S.A||[]).filter(a=>a.drone===drone&&a.id!==servDe&&((a.data>=de&&(ate==null||a.data<ate))||(servAte&&a.id===servAte)));
-  return{ha:L.reduce((s,a)=>s+a.ha,0),voos:L.reduce((s,a)=>s+(a.voos||0),0),n:L.length};}
+  return{ha:L.reduce((s,a)=>s+a.ha,0),voos:L.reduce((s,a)=>s+(a.voos||0),0),n:L.length,apls:L};}
 function vidaCalc(){const ev=trocas(),grp={},res=[];
   ev.forEach(m=>{const k=m.drone+'|'+m.pid+'|'+(m.pos||'').toLowerCase();(grp[k]=grp[k]||[]).push(m);});
   Object.values(grp).forEach(L=>L.forEach((m,i)=>{const ant=L[i-1];const r={m,ant};if(ant){r.dias=Math.round((new Date(m.data)-new Date(ant.data))/DIA);Object.assign(r,usoDrone(m.drone,ant.data,m.data,ant.servico,m.servico));}res.push(r);}));
   const uso=Object.values(grp).map(L=>{const u=L[L.length-1];return{m:u,dias:Math.round((new Date(hoje())-new Date(u.data))/DIA),...usoDrone(u.drone,u.data,null,u.servico,null)};});
   return{res,uso};}
+// custo da peça instalada numa troca = qtd × custo médio na hora da saída
+const custoTroca=m=>+((m.qtd||1)*((K.mov&&K.mov[m.id])||K.avg[m.pid]||0)).toFixed(2);
+// DESGASTE DE PEÇAS (custo de operação): o custo de cada peça é dividido pelos hectares que ela durou
+// e lançado em cada aplicação feita com ela. Peça ainda em uso: usa o R$/ha médio das vidas já medidas dessa peça.
+function desgaste(){const apl={},det={},drone={},soma={};
+  if(!S.A)return{apl,det,taxa:{},drone};
+  const {res,uso}=vidaCalc();
+  const add=(L,taxa,pid)=>L.forEach(a=>{const v=a.ha*taxa;apl[a.id]=(apl[a.id]||0)+v;(det[a.id]=det[a.id]||{})[pid]=(det[a.id][pid]||0)+v;});
+  res.filter(r=>r.ant&&r.ha>0).forEach(r=>{const c=custoTroca(r.ant);if(!c)return;r.custo=c;r.taxa=c/r.ha;const k=r.m.pid;soma[k]=soma[k]||{c:0,h:0};soma[k].c+=c;soma[k].h+=r.ha;add(r.apls,r.taxa,k);});
+  const taxa={};Object.keys(soma).forEach(k=>taxa[k]=soma[k].c/soma[k].h);
+  uso.forEach(u=>{const t=taxa[u.m.pid];if(!t)return;add(u.apls,t,u.m.pid);drone[u.m.drone]=(drone[u.m.drone]||0)+t;});
+  return{apl,det,taxa,drone};}
+const peApl=id=>+(((K.pe&&K.pe.apl[id])||0).toFixed(2));
+// ao registrar uma troca: quanto durou a peça que está saindo
+function prevTroca(drone,pid,pos){const p=S.C[pid];if(!p||p.tipo!=='peca'||!drone)return'';
+  const L=trocas().filter(m=>m.drone===drone&&m.pid===pid&&(m.pos||'').toLowerCase()===(pos||'').trim().toLowerCase());
+  const ant=L[L.length-1];
+  if(!ant)return`🔧 Primeira troca registrada de <b>${esc(p.nome)}</b>${pos?' ('+esc(pos)+')':''} neste drone. Na próxima troca o app mostra quanto ela durou.`;
+  const dias=Math.round((new Date(hoje())-new Date(ant.data))/DIA),dono=S.papel==='dono';
+  let t=`🔧 A peça que está saindo foi instalada em <b>${fd(ant.data)}</b> e durou <b>${dias} dias</b>`;
+  if(dono){const u=usoDrone(drone,ant.data,null,ant.servico,null),c=custoTroca(ant);
+    t+=` · <b>${fq(+u.ha.toFixed(1))} ha</b> · ${fq(u.voos)} voos`;
+    if(c&&u.ha>0)t+=`<br>Custo da peça ${fm(c)} → <b>${fm(c/u.ha)}/ha</b> no custo de operação`;
+    const {res}=vidaCalc(),hs=res.filter(r=>r.ant&&r.m.pid===pid).map(r=>r.ha);
+    if(hs.length){const md=hs.reduce((s,x)=>s+x,0)/hs.length;t+=`<br><span class="muted">Média dessa peça: ${fq(+md.toFixed(1))} ha (${hs.length} troca${hs.length>1?'s':''} medida${hs.length>1?'s':''})</span>`;}}
+  return t;}
+function durTxt(drone,pid,pos){const L=trocas().filter(m=>m.drone===drone&&m.pid===pid&&(m.pos||'').toLowerCase()===(pos||'').trim().toLowerCase()),ant=L[L.length-1];
+  return ant?` · a anterior durou ${Math.round((new Date(hoje())-new Date(ant.data))/DIA)} dias`:'';}
+function ppPrevia(){$('ppPrev').innerHTML=prevTroca($('ppDrone').value,$('ppItem').value,$('ppPos').value);}
 function renderVida(){
   keepSel('vuDrone','<option value="">Todos os drones</option>'+Object.values(S.Dr).sort((a,b)=>ord(a.nome,b.nome)).map(d=>`<option value="${d.id}">${esc(d.nome)}</option>`).join(''));
   keepSel('vuItem','<option value="">Todas as peças</option>'+itensOrd('peca').map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join(''));
@@ -1352,9 +1385,9 @@ function renderVida(){
   res.filter(r=>r.ant&&ok(r.m)).forEach(r=>{const k=r.m.pid;med[k]=med[k]||{d:[],h:[],v:[]};med[k].d.push(r.dias);med[k].h.push(r.ha);med[k].v.push(r.voos);});
   const avg=a=>a.reduce((s,x)=>s+x,0)/a.length;
   const mk=Object.keys(med).sort((a,b)=>ord(S.C[a].nome,S.C[b].nome));
-  $('vuMedia').innerHTML=mk.length?'<tr><th>Peça</th><th class="n">Trocas medidas</th><th class="n">Dura em média</th><th class="n">Menor / maior</th></tr>'+mk.map(k=>{const x=med[k];
+  $('vuMedia').innerHTML=mk.length?'<tr><th>Peça</th><th class="n">Trocas medidas</th><th class="n">Dura em média</th><th class="n">Menor / maior</th><th class="n">Custo/ha</th></tr>'+mk.map(k=>{const x=med[k];
     return `<tr><td><b>${esc(S.C[k].nome)}</b></td><td class="n">${x.d.length}</td><td class="n"><b>${fq(Math.round(avg(x.d)))} dias</b><br><span class="muted">${fq(+avg(x.h).toFixed(1))} ha · ${fq(Math.round(avg(x.v)))} voos</span></td>
-    <td class="n muted">${fq(Math.min(...x.h).toFixed?+Math.min(...x.h).toFixed(1):0)} – ${fq(+Math.max(...x.h).toFixed(1))} ha</td></tr>`;}).join(''):'<tr><td class="muted">Ainda não há duas trocas da mesma peça no mesmo drone para calcular a duração.</td></tr>';
+    <td class="n muted">${fq(Math.min(...x.h).toFixed?+Math.min(...x.h).toFixed(1):0)} – ${fq(+Math.max(...x.h).toFixed(1))} ha</td><td class="n">${K.pe.taxa[k]?fm(K.pe.taxa[k]):'—'}</td></tr>`;}).join(''):'<tr><td class="muted">Ainda não há duas trocas da mesma peça no mesmo drone para calcular a duração.</td></tr>';
   const us=uso.filter(u=>ok(u.m)).sort((a,b)=>b.ha-a.ha);
   $('vuUso').innerHTML=us.length?'<tr><th>Peça / drone</th><th>Instalada em</th><th class="n">Em uso</th><th></th></tr>'+us.map(u=>{const x=med[u.m.pid],mh=x?avg(x.h):0,pct=mh?u.ha/mh:0;
     return `<tr><td><b>${esc(S.C[u.m.pid].nome)}</b>${u.m.pos?' · '+esc(u.m.pos):''}<br><span class="muted">🚁 ${esc(nomeDr(u.m.drone))}</span></td><td>${fd(u.m.data)}</td>
@@ -1364,7 +1397,7 @@ function renderVida(){
   $('vuHist').innerHTML=h.length?'<tr><th>Troca</th><th>Peça / drone</th><th>Serviço</th><th class="n">A peça anterior durou</th></tr>'+h.map(r=>{const m=r.m,sv=(S.A||[]).find(a=>a.id===m.servico);
     return `<tr><td>${fd(m.data)}<br><span class="muted">${esc(m.motivo||'')}</span></td><td><b>${esc(S.C[m.pid].nome)}</b>${m.qtd>1?' ×'+fq(m.qtd):''}${m.pos?' · '+esc(m.pos):''}<br><span class="muted">🚁 ${esc(nomeDr(m.drone))} · ${esc(m.nomeQuem||'')}</span></td>
     <td>${sv?`${esc(sv.clienteNome)}<br><span class="muted">${esc(sv.local||'')} · ${fd(sv.data)}</span>`:'<span class="muted">fora de serviço</span>'}</td>
-    <td class="n">${r.ant?`<b>${r.dias} dias</b><br><span class="muted">${fq(+r.ha.toFixed(1))} ha · ${fq(r.voos)} voos<br>instalada em ${fd(r.ant.data)}</span>`:'<span class="muted">primeira troca registrada<br>(a próxima já mostra a duração)</span>'}</td></tr>`;}).join(''):'<tr><td class="muted">—</td></tr>';}
+    <td class="n">${r.ant?`<b>${r.dias} dias</b><br><span class="muted">${fq(+r.ha.toFixed(1))} ha · ${fq(r.voos)} voos<br>instalada em ${fd(r.ant.data)}${(c=>c&&r.ha>0?`<br>custo ${fm(c)} = ${fm(c/r.ha)}/ha`:'')(custoTroca(r.ant))}</span>`:'<span class="muted">primeira troca registrada<br>(a próxima já mostra a duração)</span>'}</td></tr>`;}).join(''):'<tr><td class="muted">—</td></tr>';}
 
 // ---------------- FINANCEIRO ----------------
 function salvarKmCusto(){const v=num($('gKmCusto').value);const b=db.batch();b.set(col('config').doc('custos'),{kmCusto:v},{merge:true});gravar(b,'Custo por km salvo: '+fm(v));}
@@ -1386,12 +1419,14 @@ function renderFin(){
   const mes=$('gMes').value||hoje().slice(0,7),l=S.F.filter(f=>f.data.startsWith(mes)).sort((a,b)=>b.data.localeCompare(a.data)||(b.criadoEm||0)-(a.criadoEm||0));
   const rec=l.filter(f=>f.tipo==='R').reduce((s,f)=>s+f.val,0),des=l.filter(f=>f.tipo==='D').reduce((s,f)=>s+f.val,0);
   const apM=(S.A||[]).filter(a=>a.data.startsWith(mes)),kmM=apM.reduce((s,a)=>s+(a.km||0),0);
+  const peM=apM.reduce((s,a)=>s+peApl(a.id),0);
   const ha=apM.reduce((s,a)=>s+a.ha,0),fat=(S.R||[]).filter(r=>(r.emissao||'').startsWith(mes)).reduce((s,r)=>s+r.valor,0);
   const aberto=(S.R||[]).reduce((s,r)=>s+Math.max(0,r.valor-(r.pago||0)),0);
   $('gKpis').innerHTML=`<div class="kpi"><small>Recebido no mês</small><b class="pos">${fm(rec)}</b><small>cobrado no mês: ${fm(fat)}</small></div>
    <div class="kpi"><small>Despesas do mês</small><b class="neg">${fm(des)}</b></div>
    <div class="kpi"><small>Resultado (caixa)</small><b class="${rec-des>=0?'pos':'neg'}">${fm(rec-des)}</b></div>
    <div class="kpi"><small>Hectares no mês</small><b>${fq(+ha.toFixed(1))} ha</b><small>${ha?`cobrado ${fm(fat/ha)}/ha · custo ${fm(des/ha)}/ha`:''}</small></div>
+   <div class="kpi"><small>🔧 Desgaste de peças (custo de operação)</small><b>${fm(peM)}</b><small>${ha&&peM?fm(peM/ha)+'/ha · pela vida útil das peças':'aparece após a 2ª troca de cada peça'}</small></div>
    <div class="kpi"><small>Total a receber</small><b>${fm(aberto)}</b></div>
    <div class="kpi"><small>🚗 Deslocamentos</small><b>${fq(+kmM.toFixed(1))} km</b><small>${kmCusto()?'custo estimado '+fm(kmM*kmCusto()):'defina o custo por km acima'}</small></div>`;
   const pk={};apM.filter(a=>a.km).forEach(a=>{const k=localTxt(a);pk[k]=pk[k]||{km:0,n:0};pk[k].km+=a.km;pk[k].n++;});const kk=Object.keys(pk).sort((a,b)=>pk[b].km-pk[a].km);
@@ -1415,18 +1450,19 @@ function renderPil(){if(S.papel!=='piloto')return;renderFormOpcoes();
   $('pLista').innerHTML=l.length?'<tr><th>Data</th><th>Cliente / local</th><th class="n">Área</th><th></th></tr>'+l.slice(0,60).map(a=>`<tr><td>${fd(a.data)}</td><td><b>${esc(a.clienteNome)}</b><br><span class="muted">${esc(a.local||'')} ${a.cult?'· '+esc(a.cult):''}${a.km?' · 🚗 '+fq(a.km)+' km':''}<br>${prodTxt(a)}</span></td>
     <td class="n"><b>${fq(a.ha)} ha</b></td><td class="n">${a._pend?'<span class="wait">⏳ aguardando sinal</span>':'<span class="ok">✔ enviada</span>'}${linkMapa(a)?`<br><a href="${linkMapa(a)}" target="_blank">📍 mapa</a>`:''}</td></tr>`).join(''):'<tr><td class="muted">Nenhuma aplicação ainda.</td></tr>';
   renderPilPecas();}
-function renderPilPecas(){keepSel('ppItem','<option value="">— peça —</option>'+itensOrd('peca').map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join(''));opServicos('ppServ',$('ppDrone').value);
+function renderPilPecas(){keepSel('ppItem','<option value="">— peça —</option>'+itensOrd('peca').map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join(''));opServicos('ppServ',$('ppDrone').value);ppPrevia();
   const b=($('ppBusca').value||'').toLowerCase(),l=itensOrd().filter(p=>(p.nome+' '+(p.cat||'')).toLowerCase().includes(b));
   $('ppLista').innerHTML=l.length?l.map(p=>{const s=saldo(p.id),low=p.min>0&&s<=p.min;return `<tr><td><b>${esc(p.nome)}</b><br><span class="muted">${p.tipo==='produto'?'🧪 produto':'🔧 peça'}${p.cat?' · '+esc(p.cat):''}</span></td><td class="n ${low||s<0?'low':''}" style="font-size:17px"><b>${fq(s)}</b> ${esc(p.un||'')}${low?' ⚠':''}</td></tr>`;}).join(''):'<tr><td class="muted">—</td></tr>';}
 function pilBaixaPeca(){const p=S.C[$('ppItem').value],q=num($('ppQtd').value);if(!p){toast('Escolha a peça');return;}if(q<=0){toast('Informe a quantidade');return;}
   if(!$('ppDrone').value){toast('Escolha o drone');return;}
+  const dur=p.tipo==='peca'?durTxt($('ppDrone').value,p.id,$('ppPos').value):'';
   const b=db.batch();b.set(col('movimentos').doc(),{pid:p.id,tipo:'B',qtd:q,data:hoje(),drone:$('ppDrone').value,motivo:$('ppMot').value,servico:$('ppServ').value,pos:$('ppPos').value.trim(),obs:'',quem:S.uid,nomeQuem:S.nome,criadoEm:Date.now()});
-  gravar(b,`🔧 Registrado: ${fq(q)} ${p.un||''} ${p.nome}`);$('ppQtd').value='';$('ppPos').value='';}
+  gravar(b,`🔧 Registrado: ${fq(q)} ${p.un||''} ${p.nome}${dur}`);$('ppQtd').value='';$('ppPos').value='';ppPrevia();}
 
 // ---------------- BACKUP ----------------
 function exportar(){baixar(`backup-drone-${hoje()}.json`,JSON.stringify({versao:1,clientes:S.Cl,clientesPreco:S.CP,drones:S.Dr,catalogo:S.C,movimentos:S.M,precos:S.P,precoVenda:S.PV,aplicacoes:S.A,aplValores:S.V,receber:S.R,financeiro:S.F,config:S.cfg},null,1),'application/json');toast('Backup gerado');}
 function csv(q){const c=v=>'"'+String(v??'').replace(/"/g,'""')+'"',n=v=>String(v).replace('.',',');let rows;
-  if(q==='apl')rows=[['Data','Cliente','Local','Cultura','Área (ha)','Vazão L/ha','Voos','Deslocamento km','Piloto','Drone','Latitude','Longitude','Produtos','Valor cobrado','Deslocamento cobrado','Combustível','Custo deslocamento','Cobrada','Obs']].concat((S.A||[]).map(a=>{const v=S.V[a.id]||{};return[fd(a.data),a.clienteNome,a.local,a.cult,n(a.ha),n(a.vazao||''),a.voos||'',a.km?n(a.km):'',a.pilotoNome,a.droneNome,a.lat!=null?n(a.lat):'',a.lng!=null?n(a.lng):'',(a.produtos||[]).map(p=>`${p.nome} ${p.dose} ${p.un}/ha (${p.origem==='meu'?'meu':'cliente'})`).join(' | '),v.valor?n(v.valor):'',v.desloc?n(v.desloc):'',v.combustivel?n(v.combustivel):'',a.km&&kmCusto()?n((a.km*kmCusto()).toFixed(2)):'',a.faturada?'sim':'não',a.obs];}));
+  if(q==='apl')rows=[['Data','Cliente','Local','Cultura','Área (ha)','Vazão L/ha','Voos','Deslocamento km','Piloto','Drone','Latitude','Longitude','Produtos','Valor cobrado','Deslocamento cobrado','Combustível','Custo deslocamento','Desgaste de peças','Cobrada','Obs']].concat((S.A||[]).map(a=>{const v=S.V[a.id]||{};return[fd(a.data),a.clienteNome,a.local,a.cult,n(a.ha),n(a.vazao||''),a.voos||'',a.km?n(a.km):'',a.pilotoNome,a.droneNome,a.lat!=null?n(a.lat):'',a.lng!=null?n(a.lng):'',(a.produtos||[]).map(p=>`${p.nome} ${p.dose} ${p.un}/ha (${p.origem==='meu'?'meu':'cliente'})`).join(' | '),v.valor?n(v.valor):'',v.desloc?n(v.desloc):'',v.combustivel?n(v.combustivel):'',a.km&&kmCusto()?n((a.km*kmCusto()).toFixed(2)):'',peApl(a.id)?n(peApl(a.id)):'',a.faturada?'sim':'não',a.obs];}));
   if(q==='rec')rows=[['Emissão','Vencimento','Cliente','Descrição','Área (ha)','R$/ha','Valor','Recebido','Saldo','Situação']].concat((S.R||[]).map(r=>[fd(r.emissao),fd(r.vencimento),r.clienteNome,r.desc,n(r.ha),n(r.precoHa),n(r.valor),n(r.pago||0),n((r.valor-(r.pago||0)).toFixed(2)),stRec(r).t]));
   if(q==='fin')rows=[['Data','Tipo','Grupo','Descrição','Drone','Valor']].concat(S.F.map(f=>[fd(f.data),f.tipo==='R'?'Receita':'Despesa',f.tipo==='R'?(GR2[f.grupo]||''):(GD[f.grupo]||''),f.desc,nomeDr(f.drone),n(f.tipo==='R'?f.val:-f.val)]));
   if(q==='est')rows=[['Item','Tipo','Categoria','Unidade','Saldo','Mínimo','Custo médio','Valor']].concat(itensOrd().map(p=>{const s=saldo(p.id),a=K.avg[p.id]||0;return[p.nome,p.tipo,p.cat,p.un,n(s),n(p.min||0),n(a.toFixed(2)),n((s>0?s*a:0).toFixed(2))]}));
